@@ -102,11 +102,11 @@ results from one run on STM32F407 Discovery @ 168 MHz:
 
 ### Memory footprint
 
-| Section          | Size       | % of available           |
-|------------------|------------|--------------------------|
-| Flash (`.text`)  | 18,532 B   | 1.77 % of 1 MB           |
-| SRAM (`.bss`)    | 3,156 B    | 1.65 % of 192 KB         |
-| **Total ELF**    | **21,708 B** | —                      |
+| Section                    | Size         | % of available      |
+|----------------------------|--------------|---------------------|
+| Flash (`.text`)            | 18,532 B     | 1.77 % of 1 MB      |
+| SRAM (`.bss` + `.data`)    | 3,176 B      | 1.62 % of 192 KB    |
+| **Total ELF**              | **21,708 B** | —                   |
 
 ### Timing (DWT cycle counter at 168 MHz)
 

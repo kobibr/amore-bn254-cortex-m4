@@ -1,0 +1,73 @@
+# =============================================================================
+#  .gitignore for amore-bn254-cortex-m4
+# =============================================================================
+
+# ---- External dependencies (must NEVER be committed) ------------------------
+# These are large external libraries that the user must install separately
+# (see INSTALLATION.md). They are referenced via symlinks during local
+# development.
+STM32CubeF4
+relic_install
+relic_build
+relic/
+
+# ---- Build artifacts --------------------------------------------------------
+build/
+*.elf
+*.bin
+*.hex
+*.map
+*.lst
+*.o
+*.obj
+*.a
+*.so
+
+# ---- CMake ------------------------------------------------------------------
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# ---- Editor / IDE -----------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ---- Python -----------------------------------------------------------------
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+.tox/
+.venv/
+venv/
+
+# ---- Logs and runtime output ------------------------------------------------
+logs/
+*.log
+combined_report_*.txt
+stm_report_*.txt
+relic_report_*.txt
+
+# ---- Backups and temporary files --------------------------------------------
+*.bak
+*.bak.*
+*.before-*
+*.tmp
+.#*
+\#*\#
+
+# ---- OS / shell -------------------------------------------------------------
+.bash_history
+.zsh_history
+
+# ---- Local config (optional, can be uncommented if needed) ------------------
+# .env
+# local_settings.sh

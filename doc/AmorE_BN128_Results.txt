@@ -1,0 +1,356 @@
+╔══════════════════════════════════════════════════════════════════════════╗
+║         AmorE BN128 — Benchmark Results Report                          ║
+║         Platform : STM32F407 Discovery @ 168 MHz (Cortex-M4 + FPU)     ║
+║         Protocol : Amortized Remote Pairing Evaluation over BN128       ║
+║         Date     : 2026-04-01                                            ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  1. SYSTEM CONFIGURATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Client — STM32F407G-DISC1
+    CPU Core     : ARM Cortex-M4 with FPU (hard-float ABI)
+    Clock        : 168 MHz (PLL from HSI 16 MHz)
+    Flash        : 1024 KiB  |  SRAM: 192 KiB
+    Compiler     : arm-none-eabi-gcc 13.2.1
+    Flags        : -O2 -g3 -mcpu=cortex-m4 -mthumb
+                   -mfpu=fpv4-sp-d16 -mfloat-abi=hard
+    Field arith  : CIOS Montgomery multiplication (254-bit, 8x32-bit limbs)
+    EC ops       : Jacobian coordinates (dbl-2009-l, add-2007-bl)
+
+  Server — Raspberry Pi 3B
+    Library      : py_ecc 8.0.0  (Python 3, pure-Python BN128)
+    Interface    : /dev/ttyAMA0 @ 921600 baud
+    Connection   : GPIO 14/15 (UART TX/RX) <-> STM32 PA2/PA3 (USART2)
+
+  Curve
+    Name         : BN128 (BN256, alt_bn128)
+    Field size   : 254-bit prime field
+    Embedding    : k = 12  (Fp12 target group)
+    Security     : ~128-bit (pre-quantum)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  2. MEMORY FOOTPRINT  (arm-none-eabi-size output)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Section    Size (B)    % of available    Description
+  --------   --------    --------------    ---------------------------------
+  .text       18,532      1.77% / 1 MB     Code + read-only constants (Flash)
+  .data           20      0.01% / 192 KB   Initialized globals (Flash->SRAM)
+  .bss         3,156      1.65% / 192 KB   Zero-init globals incl. g_results
+  --------   --------
+  Flash total: 18,552 B   (18.1 KiB  --  1.77% of 1 MB)
+  SRAM total :  3,176 B   ( 3.1 KiB  --  1.62% of 192 KB)
+
+  Key symbols
+    g_results  (AmorE_BenchResults) @ 0x20000028  -- telemetry struct in .bss
+
+  Interpretation
+    The entire AmorE client -- field arithmetic, EC ops, UART stack,
+    protocol logic, and telemetry -- fits in under 19 KB of Flash and
+    under 4 KB of SRAM. This is well within the budget of any Cortex-M0+
+    device, suggesting portability to even more constrained hardware.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  3. PROTOCOL CORRECTNESS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Final status word  : 0x600D0000  (all checks passed)
+  Magic word         : 0xa0aaaa00  (benchmark completed normally)
+  Firmware version   : 0x00020000
+  Phase at exit      : 0xFF        (DONE)
+  Last error         : 0x00000000  (none)
+
+  Round outcomes
+    Honest rounds    :  61 / 61  accepted   (100.0%)
+    Malicious round  :   1 /  1  REJECTED   [security check passed]
+    Verify failures  :   0
+    UART errors      :   0
+    CRC errors       :   0
+    Bad CMD received :   0
+    Bad length       :   0
+
+  Verification equation checked each round:
+    rho^r * gamma  ==  xi   (in Fp12)
+    where  xi = e(G1,G2)^(-s),  rho = e(A,B),  gamma = e(A,D)*e(G2,C)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  4. STM32 CLIENT TIMING  (DWT cycle counter @ 168 MHz)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  4.1  OneTimeSetup  (single execution at startup)
+    Cycles     :    84,660,025  cyc
+    Wall time  :       503.9  ms
+    Content    :  Sample scalar s, compute xi = e(G1,G2)^(-s) in Fp12
+
+  4.2  Per-batch results
+
+  +----------+-----+-------------------+-------------------+-----------------+
+  |  Batch   |  N  |   Blind (Setup)   |  Verify           |  Amort/round    |
+  +----------+-----+-------------------+-------------------+-----------------+
+  |  N =  1  |   1 |  33,149,896 cyc   |  29,426,790 cyc   |  62,576,686 cyc |
+  |          |     |     197.3 ms      |     175.2 ms      |     372.5 ms    |
+  +----------+-----+-------------------+-------------------+-----------------+
+  |  N = 10  |  10 | 333,098,515 cyc   | 303,277,145 cyc   |  63,637,566 cyc |
+  |          |     |   1,982.7 ms      |   1,805.2 ms      |     378.8 ms    |
+  +----------+-----+-------------------+-------------------+-----------------+
+  |  N = 50  |  50 |1,675,134,487 cyc  |1,532,218,149 cyc  |  64,147,052 cyc |
+  |  (main)  |     |   9,971.0 ms      |   9,120.3 ms      |     381.8 ms    |
+  +----------+-----+-------------------+-------------------+-----------------+
+
+  4.3  Per-round breakdown  (N=50, best amortization)
+
+    Operation        Cycles/round   Time/round   Share
+    -------------    ------------   ----------   -----
+    Blind (Setup)      33,502,690    199.4 ms    52.2%
+    Verify             30,644,363    182.4 ms    47.8%
+    -------------    ------------   ----------   -----
+    Total amortized    64,147,052    381.8 ms    100%
+
+  4.4  Amortization effect
+
+    N =  1  ->  62,576,686 cyc/round  (372.5 ms)   baseline
+    N = 10  ->  63,637,566 cyc/round  (378.8 ms)   +1.7% vs N=1
+    N = 50  ->  64,147,052 cyc/round  (381.8 ms)   +2.5% vs N=1
+
+    The per-round cost is essentially flat across batch sizes.
+    This confirms that the AmorE protocol has true O(1) amortized
+    complexity per round -- the blinding overhead does not accumulate.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  5. SERVER TIMING -- STATISTICAL ANALYSIS  (N=61 honest rounds)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  All 61 honest round compute times available (py_ecc BN128 on RPi 3B):
+
+  Statistic                Value
+  ----------------------   ------------------
+  N (samples)              61
+  Mean                     73,452.78 ms
+  Std deviation                84.52 ms
+  Median                   73,477.50 ms
+  Minimum                  73,249.30 ms   (round 23)
+  Maximum                  73,635.60 ms   (round 47)
+  Range                       386.30 ms
+  Coeff. of variation           0.115%   (extremely stable)
+  95% Confidence Interval  [73,431.1 , 73,474.4] ms
+  CI margin                    +/-21.6 ms
+
+  Malicious round compute  :  74,910.0 ms  (+1,457 ms vs mean honest, +1.98%)
+
+  Interpretation:
+    The server compute time is highly deterministic (CV = 0.115%).
+    The 95% CI of +/-21.6 ms on the mean confirms that a single run
+    of 61 rounds yields statistically reliable timing data -- no
+    additional runs are required to characterize server performance.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  6. COMMUNICATION OVERHEAD
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  UART packet sizes per round
+
+    Packet           Direction          Payload   Overhead   Total
+    --------------   ---------------   -------   --------   -----
+    CMD_SETUP        STM32 -> Server    384 B     6 B        390 B
+    CMD_RESULT       Server -> STM32    768 B     6 B        774 B
+    CMD_STATUS       STM32 -> Server      1 B     6 B          7 B
+    --------------                     -------              -----
+    Total per round                   1,153 B              1,171 B
+
+  Packet format: [0xAA][0x55][CMD][LEN_LO][LEN_HI][DATA...][CRC8]
+  CRC8 = XOR of CMD ^ LEN_LO ^ LEN_HI ^ all data bytes
+
+  Transmission time @ 921600 baud (10 bits/byte)
+    Theoretical TX  :   12.7 ms / round
+    Observed RTT    :  ~175 ms / round  (avg, range 160-189 ms)
+    TX efficiency   :    7.3% of RTT  (rest: RPi serial driver latency)
+
+  UART overhead as fraction of total round time
+    STM32 compute   :  381.8 ms   68.6%
+    UART RTT        :  175.0 ms   31.4%
+    ----------------------------------
+    Total per round :  556.8 ms  100.0%
+
+  Note: UART latency is dominated by RPi serial driver scheduling,
+        not by baud rate. A faster baud would not significantly reduce RTT.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  7. OUTSOURCING EFFECTIVENESS  (vs deployed server)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  This section measures how much the client saves compared to the
+  ACTUAL DEPLOYED SERVER in this experiment (py_ecc 8.0.0, pure Python,
+  on Raspberry Pi 3B). For comparison against an optimized native C
+  implementation on the same STM32, see Section 11.
+
+  Server pairing time (avoided by client)  :  73,452.8 ms  (py_ecc/RPi)
+  Client total per round (blind + verify)  :     381.8 ms
+  -----------------------------------------------------------
+  Computation saving per round             :  73,071.0 ms
+  Systemic speedup vs Python server        :     192.4x
+  Client cost vs Python server             :       0.52%
+
+  Caveat:
+    The 192.4x figure measures AmorE's value AGAINST THE SPECIFIC
+    SERVER USED IN THIS DEPLOYMENT (Python). It is NOT a comparison
+    against an optimized local pairing implementation. For that
+    apples-to-apples comparison, see Section 11.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  8. THROUGHPUT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Current setup (bottleneck: server pairing at 73,453 ms)
+    End-to-end per round   :  73,453 + 175  =  73,628 ms
+    Throughput             :  48.9 rounds / hour
+                           :  1,173 rounds / day
+
+  Client-only upper bound (if server were instantaneous)
+    Client compute + UART  :  382 + 175  =  557 ms/round
+    Max throughput         :  ~6,462 rounds / hour
+    -> The client is NOT the bottleneck in this deployment.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  9. PHASE EXECUTION LOG  (last 32 phase transitions, from SRAM)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Phase codes:
+    0x10 BENCH_SETUP   0x11 BENCH_SEND   0x12 BENCH_WAIT
+    0x13 BENCH_VERIFY  0x14 BENCH_STATUS
+    0x20 SECURITY      0x21 SEC_WAIT     0x22 SEC_VERIFY   0xFF DONE
+
+  Normal round:   0x10 -> 0x11 -> 0x12 -> 0x13 -> 0x14  (repeat)
+  Security round: 0x20 -> 0x11 -> 0x21 -> 0x22 -> 0xFF
+
+  Log covers batch=2 rounds 44-49, security round (batch=3), and DONE.
+  All transitions are correct. No unexpected phases. No aborted rounds.
+
+  Note on DWT counter wraps: The 32-bit DWT counter wraps every
+  2^32 / 168e6 = 25.57 seconds. Wrap-around values appear as smaller
+  numbers in the log but do not affect cycle deltas (unsigned arithmetic).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  10. FINAL VERDICT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Status word  :  0x600D0000  --  ALL PASSED
+
+  [OK]  All 61 honest rounds verified correctly  (0 failures)
+  [OK]  Malicious server correctly detected and rejected
+  [OK]  Zero protocol errors (UART / CRC / CMD / length)
+  [OK]  Flash usage        :  18,552 B      (1.77% of 1 MB)
+  [OK]  SRAM usage         :   3,176 B      (1.62% of 192 KB)
+  [OK]  Amortized cost     :  381.8 ms/round @ 168 MHz  (N=50)
+  [OK]  Cost vs Py server  :    0.52% of py_ecc pairing time on RPi
+  [OK]  Systemic speedup   :  192.4x vs Python server (NOT vs local C)
+  [OK]  Server timing CV   :    0.115%  (highly deterministic)
+  [OK]  95% CI on server   :  +/-21.6 ms  (from 61 samples, same run)
+
+  See Section 11 for an apples-to-apples comparison against an optimized
+  native C pairing implementation (RELIC) on the same STM32 hardware.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  11. LOCAL PAIRING COMPARISON  (apples-to-apples: STM32 vs STM32)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  To establish a fair comparison, we benchmarked an optimized native C
+  implementation of BN254 pairing on the same STM32F407 hardware,
+  measured by the same DWT cycle counter at the same 168 MHz clock.
+
+  Native implementation
+    Library      : RELIC v0.6.0  (10.23 MiB, 36k objects)
+    Curve        : BN_P254  (same curve as alt_bn128 / BN128)
+    Pairing      : pp_map_oatep_k12  (Optimal Ate, embedding degree 12)
+    ARITH        : easy  (pure C, gcc -O2 -mthumb -mfpu=fpv4-sp-d16)
+    ALLOC        : AUTO  (stack-based, no dynamic allocation)
+    ABI          : -mfloat-abi=hard  (matches AmorE client)
+    Verified by  : bilinearity check  e(2P,Q) == e(P,Q)^2  (PASSED)
+
+  Measurement  (10 iterations, single run, deterministic seed)
+
+  Statistic                Value
+  ----------------------   --------------------
+  N (samples)              10
+  Mean                     252.3 ms      (42,386,215 cycles)
+  Min                      252.3 ms      (42,386,001 cycles)
+  Max                      252.3 ms      (42,386,356 cycles)
+  Range                    2.1 us        (355 cycles)
+  Coeff. of variation      0.00084%      (extraordinarily stable)
+
+  The variance is so small (CV < 0.001%) that the measurement is
+  essentially deterministic. No replication is required.
+
+  11.1  Direct comparison
+
+  Operation                                       Time (ms)    Source
+  ----------------------------------------------- ----------   --------
+  Single BN254 pairing on STM32F4 (RELIC, C)      252.3 ms     measured
+  AmorE per-round amortized cost (N=50)           381.8 ms     measured
+  ----------------------------------------------- ----------
+  AmorE / RELIC ratio                             1.51x        derived
+
+  Per the strict "apples-to-apples" comparison:
+
+      AmorE costs ~1.5x MORE per round than computing a single BN254
+      pairing directly with optimized C on the same STM32F4.
+
+  This reverses the systemic 192.4x speedup figure of Section 7 when
+  the comparison baseline is changed from "Python on RPi" to
+  "optimized C on the same MCU". The two figures are not in conflict:
+  they answer different questions.
+
+  11.2  Why AmorE still has value
+
+  AmorE is not faster than local C — but speed was never the only
+  axis. The protocol's value lies elsewhere:
+
+  Resource              AmorE client    RELIC pairing    Ratio
+  --------------------- --------------- ---------------- -------------
+  Flash (.text)         18.5 KB         55.1 KB          AmorE: 3.0x lighter
+  SRAM (.bss)           3.1 KB          101.4 KB         AmorE: 33x lighter
+  ELF total             21.7 KB         156.7 KB         AmorE: 7.2x smaller
+
+  In addition, AmorE provides:
+    - Input privacy: server never sees plaintext (A,B)
+    - Cheating detection: malicious results rejected with prob ~ 1
+    - Feasibility on parts where RELIC does not fit (e.g. STM32L0/G0
+      with 4-32 KB SRAM)
+
+  11.3  Honest summary
+
+  The right framing for AmorE on STM32F4 is therefore:
+
+      "Trade ~1.5x speed (vs in-place C) for 33x less RAM,
+       3x less Flash, input privacy, and the ability to outsource
+       pairing computation to an untrusted helper."
+
+  On a Cortex-M4 with 192 KB SRAM, this trade-off is not compelling
+  for speed-sensitive applications. It becomes compelling on:
+    - smaller MCUs where 100 KB of pairing-state cannot fit
+    - settings where input privacy is required
+    - settings where battery cost of computation matters more than
+      latency
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  12. UPDATED VERDICT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Two distinct comparisons, each measured on real hardware:
+
+  vs Python server on RPi  (Section 7)
+    Speedup            :  192.4x   (systemic, deployment-specific)
+    AmorE cost ratio   :  0.52%    of remote pairing time
+
+  vs Optimized C on same STM32  (Section 11)
+    Speedup            :  0.66x    (i.e. AmorE is 1.51x SLOWER)
+    Memory ratio       :  AmorE uses 33x less RAM and 3x less Flash
+
+  The contribution of AmorE is therefore best characterized as
+  ENABLING pairing-based cryptography on memory-constrained MCUs
+  where a full pairing library does not fit, AND on supplying input
+  privacy to the outsourced computation.  It is not a speed
+  optimization for parts where RELIC already fits comfortably.
+
+==========================================================================

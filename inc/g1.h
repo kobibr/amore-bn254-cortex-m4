@@ -1,0 +1,30 @@
+#pragma once
+#include "fp.h"
+
+/* G1 points on y^2 = x^3 + 4  (BN128 base curve, a=0, b=4).
+ * Jacobian coordinates: (X:Y:Z) → affine (X/Z^2, Y/Z^3).
+ * Infinity point = (1:1:0). */
+typedef struct { Fp X, Y, Z; } G1Point;
+
+/* Point at infinity */
+void g1_inf(G1Point *r);
+int  g1_is_inf(const G1Point *p);
+
+/* Load the generator P = (1,2) */
+void g1_generator(G1Point *r);
+
+/* Arithmetic */
+void g1_neg(G1Point *r, const G1Point *a);
+void g1_dbl(G1Point *r, const G1Point *a);
+void g1_add(G1Point *r, const G1Point *a, const G1Point *b);
+void g1_add_mixed(G1Point *r, const G1Point *a, const Fp bx, const Fp by); /* b affine */
+
+/* r = k * P  (k as 8 uint32_t LE limbs, nbits significant bits) */
+void g1_scalar_mul(G1Point *r, const G1Point *p, const uint32_t k[8], int nbits);
+
+/* Convert to/from affine (raw Montgomery Fp values) */
+void g1_to_affine(Fp rx, Fp ry, const G1Point *p);
+
+/* Serialise to/from 64-byte raw big-endian (plain field values, NOT Montgomery) */
+void g1_to_bytes(uint8_t out[64], const G1Point *p);
+void g1_from_bytes(G1Point *r, const uint8_t in[64]);

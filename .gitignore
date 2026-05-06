@@ -71,3 +71,4 @@ relic_report_*.txt
 # ---- Local config (optional, can be uncommented if needed) ------------------
 # .env
 # local_settings.sh
+relic_install_bn254/

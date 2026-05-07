@@ -1,10 +1,14 @@
 #pragma once
 #include <stdint.h>
+#include "bls12_381_const.h"
 
-/* 256-bit field element mod p (BN128 field prime).
+/* 384-bit field element mod p (BLS12-381 field prime, 381 bits actual).
  * Stored in Montgomery form:  stored_value = real_value * R mod p
- * where R = 2^256.  8 × uint32_t little-endian limbs. */
-typedef uint32_t Fp[8];
+ * where R = 2^384.  12 × uint32_t little-endian limbs. */
+
+#define FP_LIMBS BLS_FP_LIMBS  /* 12 */
+
+typedef uint32_t Fp[FP_LIMBS];
 
 void fp_zero(Fp r);
 void fp_one(Fp r);           /* = R mod p (Montgomery form of 1) */
@@ -23,8 +27,8 @@ void fp_inv(Fp r, const Fp a);               /* Fermat a^{p-2} */
 /* Conversion helpers */
 void fp_from_u32(Fp r, uint32_t x);          /* r = x * R mod p (into Mont.) */
 void fp_to_mont(Fp r, const Fp a_plain);     /* r = a * R mod p  */
-void fp_from_mont(Fp r, const Fp a_mont);    /* r = a * R^{-1} mod p (out of Mont.) */
+void fp_from_mont(Fp r, const Fp a_mont);    /* r = a * R^{-1} mod p */
 
-/* Serialise / deserialise (32 bytes big-endian, raw field value, NOT Montgomery) */
-void fp_to_bytes(uint8_t out[32], const Fp a);
-void fp_from_bytes(Fp r, const uint8_t in[32]);
+/* Serialise / deserialise (48 bytes big-endian, raw field value, NOT Montgomery) */
+void fp_to_bytes(uint8_t out[48], const Fp a);
+void fp_from_bytes(Fp r, const uint8_t in[48]);

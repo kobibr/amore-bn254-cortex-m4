@@ -1,9 +1,8 @@
 #include "g1.h"
-#include "bn128_const.h"
+#include "bls12_381_const.h"
 #include <string.h>
 
 /* b = 4 in Montgomery form */
-static void g1_b(Fp r) { fp_from_u32(r, 4); }
 
 void g1_inf(G1Point *r) {
     fp_one(r->X); fp_one(r->Y); fp_zero(r->Z);
@@ -11,8 +10,8 @@ void g1_inf(G1Point *r) {
 int g1_is_inf(const G1Point *p) { return fp_is_zero(p->Z); }
 
 void g1_generator(G1Point *r) {
-    memcpy(r->X, BN128_G1X, 32);
-    memcpy(r->Y, BN128_G1Y, 32);
+    memcpy(r->X, BLS_G1X, 48);
+    memcpy(r->Y, BLS_G1Y, 48);
     fp_one(r->Z);
 }
 
@@ -136,14 +135,14 @@ void g1_to_affine(Fp rx, Fp ry, const G1Point *p) {
     fp_mul(ry, p->Y, Zinv2);
 }
 
-void g1_to_bytes(uint8_t out[64], const G1Point *p) {
+void g1_to_bytes(uint8_t out[96], const G1Point *p) {
     Fp rx, ry;
     g1_to_affine(rx, ry, p);
     fp_to_bytes(out,    rx);
-    fp_to_bytes(out+32, ry);
+    fp_to_bytes(out+48, ry);
 }
-void g1_from_bytes(G1Point *r, const uint8_t in[64]) {
+void g1_from_bytes(G1Point *r, const uint8_t in[96]) {
     fp_from_bytes(r->X, in);
-    fp_from_bytes(r->Y, in+32);
+    fp_from_bytes(r->Y, in+48);
     fp_one(r->Z);
 }

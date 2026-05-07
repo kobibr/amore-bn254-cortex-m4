@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AmorE BN128 — Python server with full telemetry
+AmorE BLS12-381 — Python server with full telemetry
 ================================================
 Runs on the laptop.  Communicates with STM32 via /dev/ttyACM0 (ST-Link VCP).
 
@@ -8,8 +8,8 @@ Packet format (matches amore_uart.h):
   [0xAA][0x55][CMD:1][LEN_LO:1][LEN_HI:1][DATA:LEN][CRC8:1]
 
 Commands:
-  CMD_SETUP  = 0x10   client→server   DATA = A(64) B(128) C(64) D(128) = 384 B
-  CMD_RESULT = 0x20   server→client   DATA = gamma(384) rho(384)        = 768 B
+  CMD_SETUP  = 0x10   client→server   DATA = A(96) B(192) C(96) D(192) = 576 B
+  CMD_RESULT = 0x20   server→client   DATA = gamma(576) rho(576)        = 1152 B
   CMD_STATUS = 0x30   client→server   DATA = 1 B  (0=fail, 1=ok)
   CMD_READY  = 0x40   server→client   DATA = 1 B  (0=honest, 1=malicious)
 
@@ -25,16 +25,11 @@ from typing import Optional
 import serial
 
 # ── py_ecc imports ──────────────────────────────────────────────────────────
-from py_ecc.bn128 import (
+from py_ecc.bls12_381 import (
     field_modulus as p, curve_order as q,
     G1, G2, pairing, multiply, neg, add,
+    FQ12,
 )
-# py_ecc >= 7.0.0 removed bn128_field_elements; FQ12 lives here now:
-try:
-    from py_ecc.bn128 import bn128_FQ12 as FQ12          # py_ecc >= 7.0.0
-except ImportError:
-    import py_ecc.bn128 as _bn
-    FQ12 = _bn.FQ12                                       # py_ecc < 7.0.0
 
 
 # ============================================================================
@@ -163,18 +158,18 @@ def recv_packet(port: serial.Serial, timeout_s: float = 30.0) -> tuple[int, byte
 #  BN128 serialisation
 # ============================================================================
 def _to_fp(b: bytes):
-    from py_ecc.bn128 import FQ
+    from py_ecc.bls12_381 import FQ
     return FQ(int.from_bytes(b, 'big'))
 
 def _to_fp2(b: bytes):
-    from py_ecc.bn128 import FQ2
-    return FQ2([int.from_bytes(b[0:32],'big'), int.from_bytes(b[32:64],'big')])
+    from py_ecc.bls12_381 import FQ2
+    return FQ2([int.from_bytes(b[0:48],'big'), int.from_bytes(b[48:96],'big')])
 
 def bytes_to_g1(b: bytes):
-    return (_to_fp(b[0:32]), _to_fp(b[32:64]))
+    return (_to_fp(b[0:48]), _to_fp(b[48:96]))
 
 def bytes_to_g2(b: bytes):
-    return (_to_fp2(b[0:64]), _to_fp2(b[64:128]))
+    return (_to_fp2(b[0:96]), _to_fp2(b[96:192]))
 
 def _flat(x) -> list[int]:
     r = []
@@ -185,7 +180,7 @@ def _flat(x) -> list[int]:
     return r
 
 def fp12_to_bytes(elem) -> bytes:
-    return b''.join(c.to_bytes(32, 'big') for c in _flat(elem))
+    return b''.join(c.to_bytes(48, 'big') for c in _flat(elem))
 
 def fp12_pow(x, e: int):
     r = FQ12.one(); b = x
@@ -224,7 +219,7 @@ def run_server(port_name: str, baud: int, honest_rounds: int, log_dir: str) -> S
 
     print()
     print(head("=" * 60))
-    print(head("  AmorE BN128 Server  —  telemetry build"))
+    print(head("  AmorE BLS12-381 Server  —  telemetry build"))
     print(head("=" * 60))
     log(info(f"Port: {port_name}  Baud: {baud}"))
     log(info(f"Honest rounds before malicious switch: {honest_rounds}"))
@@ -265,9 +260,9 @@ def run_server(port_name: str, baud: int, honest_rounds: int, log_dir: str) -> S
                 tel.bad_cmd_errors += 1
                 log(warn(f"Unexpected CMD=0x{cmd:02x} (expected 0x10), skipping."))
                 continue
-            if len(data) != 384:
+            if len(data) != 576:
                 tel.bad_len_errors += 1
-                log(warn(f"Bad SETUP length {len(data)} (expected 384), skipping."))
+                log(warn(f"Bad SETUP length {len(data)} (expected 576), skipping."))
                 continue
 
             round_num += 1
@@ -278,12 +273,12 @@ def run_server(port_name: str, baud: int, honest_rounds: int, log_dir: str) -> S
             rt = RoundTelemetry(round_num=round_num, mode=mode)
             rt.t_recv_setup = time.time()
 
-            # Deserialise pub = A(64) B(128) C(64) D(128)
+            # Deserialise pub = A(96) B(192) C(96) D(192)
             try:
-                pt_A = bytes_to_g1(data[0:64])
-                pt_B = bytes_to_g2(data[64:192])
-                pt_C = bytes_to_g1(data[192:256])
-                pt_D = bytes_to_g2(data[256:384])
+                pt_A = bytes_to_g1(data[0:96])
+                pt_B = bytes_to_g2(data[96:288])
+                pt_C = bytes_to_g1(data[288:384])
+                pt_D = bytes_to_g2(data[384:576])
             except Exception as e:
                 rt.error = f"Deserialise failed: {e}"
                 log(err(rt.error))
@@ -438,7 +433,7 @@ def _print_server_report(tel: ServerTelemetry):
 #  Entry point
 # ============================================================================
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='AmorE BN128 server with telemetry')
+    parser = argparse.ArgumentParser(description='AmorE BLS12-381 server with telemetry')
     parser.add_argument('--port',          default='/dev/ttyACM0')
     parser.add_argument('--baud',          type=int, default=921600)
     parser.add_argument('--honest-rounds', type=int, default=61,

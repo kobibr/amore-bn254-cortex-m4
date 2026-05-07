@@ -1,6 +1,6 @@
 #include "amore.h"
 #include "amore_uart.h"
-#include "bn128_const.h"
+#include "bls12_381_const.h"
 #include "stm32f4xx_hal.h"
 #include <string.h>
 
@@ -72,9 +72,13 @@ static void sample_scalar_fq(Fq r) {
     uint32_t raw[8];
     do {
         for (int i = 0; i < 8; i++) raw[i] = rng_u32();
-        raw[7] &= 0x3FFFFFFFu;
-    } while (raw[7] > BN128_Q[7] ||
-             (raw[7] == BN128_Q[7] && raw[0] == 0));
+        /* BLS12-381's q[7] = 0x73eda753 (31 bits). Mask to 31 bits so
+         * rejection sampling actually triggers when raw >= q. The previous
+         * mask 0x3FFFFFFFu (30 bits) was a leftover from BN254 (q[7] of
+         * different shape) and made the rejection loop dead code. */
+        raw[7] &= 0x7FFFFFFFu;
+    } while (raw[7] > BLS_Q[7] ||
+             (raw[7] == BLS_Q[7] && raw[0] == 0));
     uint32_t nz = 0;
     for (int i = 0; i < 8; i++) nz |= raw[i];
     if (!nz) raw[0] = 1;
@@ -96,18 +100,18 @@ static int sample_short_scalar(uint32_t out[8], uint32_t phi) {
  * Load gamma_T (e(G1,G2)) from hardcoded Montgomery-form constants
  * ----------------------------------------------------------------------- */
 static void load_gamma_T(Fp12 *gt) {
-    memcpy(gt->c[0].c[0].c0, BN128_GT0,  32);
-    memcpy(gt->c[0].c[0].c1, BN128_GT1,  32);
-    memcpy(gt->c[0].c[1].c0, BN128_GT2,  32);
-    memcpy(gt->c[0].c[1].c1, BN128_GT3,  32);
-    memcpy(gt->c[0].c[2].c0, BN128_GT4,  32);
-    memcpy(gt->c[0].c[2].c1, BN128_GT5,  32);
-    memcpy(gt->c[1].c[0].c0, BN128_GT6,  32);
-    memcpy(gt->c[1].c[0].c1, BN128_GT7,  32);
-    memcpy(gt->c[1].c[1].c0, BN128_GT8,  32);
-    memcpy(gt->c[1].c[1].c1, BN128_GT9,  32);
-    memcpy(gt->c[1].c[2].c0, BN128_GT10, 32);
-    memcpy(gt->c[1].c[2].c1, BN128_GT11, 32);
+    memcpy(gt->c[0].c[0].c0, BLS_GT0,  48);
+    memcpy(gt->c[0].c[0].c1, BLS_GT1,  48);
+    memcpy(gt->c[0].c[1].c0, BLS_GT2,  48);
+    memcpy(gt->c[0].c[1].c1, BLS_GT3,  48);
+    memcpy(gt->c[0].c[2].c0, BLS_GT4,  48);
+    memcpy(gt->c[0].c[2].c1, BLS_GT5,  48);
+    memcpy(gt->c[1].c[0].c0, BLS_GT6,  48);
+    memcpy(gt->c[1].c[0].c1, BLS_GT7,  48);
+    memcpy(gt->c[1].c[1].c0, BLS_GT8,  48);
+    memcpy(gt->c[1].c[1].c1, BLS_GT9,  48);
+    memcpy(gt->c[1].c[2].c0, BLS_GT10, 48);
+    memcpy(gt->c[1].c[2].c1, BLS_GT11, 48);
 }
 
 /* -----------------------------------------------------------------------
@@ -123,11 +127,11 @@ void AmorE_OneTimeSetup(AmorE_SK *sk, uint32_t phi, uint32_t tau_ms) {
     uint32_t s_plain[8];
     fq_to_limbs(s_plain, sk->s);
 
-    /* neg_s = q - s */
+    /* neg_s = q - s — xi = gt^(-s) (matches working BN254 implementation) */
     uint32_t neg_s[8] = {0};
     uint64_t borrow = 0;
     for (int i = 0; i < 8; i++) {
-        uint64_t x = (uint64_t)BN128_Q[i] - s_plain[i] - borrow;
+        uint64_t x = (uint64_t)BLS_Q[i] - s_plain[i] - borrow;
         neg_s[i] = (uint32_t)x;
         borrow   = (x >> 63) & 1;
     }
@@ -137,14 +141,14 @@ void AmorE_OneTimeSetup(AmorE_SK *sk, uint32_t phi, uint32_t tau_ms) {
 
     Fp12 gt;
     load_gamma_T(&gt);
-    fp12_exp(&sk->xi, &gt, neg_s, 254);
+    fp12_exp(&sk->xi, &gt, neg_s, 255);
 }
 
 /* -----------------------------------------------------------------------
  * AmorE_Setup (per-round blinding)
  * ----------------------------------------------------------------------- */
 void AmorE_Setup(const AmorE_SK *sk,
-                 const uint8_t A_bytes[64], const uint8_t B_bytes[128],
+                 const uint8_t A_bytes[96], const uint8_t B_bytes[192],
                  AmorE_Pub *pub, AmorE_Sec *sec)
 {
     G1Point A;  G2Point B;
@@ -162,20 +166,20 @@ void AmorE_Setup(const AmorE_SK *sk,
 
     uint64_t borrow = 0;
     for (int i = 0; i < 8; i++) {
-        uint64_t x = (uint64_t)BN128_Q[i] - su_inv_plain[i] - borrow;
+        uint64_t x = (uint64_t)BLS_Q[i] - su_inv_plain[i] - borrow;
         neg_su_inv_plain[i] = (uint32_t)x;
         borrow = (x >> 63) & 1;
     }
 
     G1Point Pgen, U;  g1_generator(&Pgen);
-    g1_scalar_mul(&U, &Pgen, u_plain, 254);
+    g1_scalar_mul(&U, &Pgen, u_plain, 255);
 
     G2Point Qgen, V;  g2_generator(&Qgen);
-    g2_scalar_mul(&V, &Qgen, su_inv_plain, 254);
+    g2_scalar_mul(&V, &Qgen, su_inv_plain, 255);
 
     G1Point UA, C;
     g1_add(&UA, &U, &A);
-    g1_scalar_mul(&C, &UA, neg_su_inv_plain, 254);
+    g1_scalar_mul(&C, &UA, neg_su_inv_plain, 255);
 
     sec->nbits = sample_short_scalar(sec->r, sk->phi);
 
@@ -184,8 +188,8 @@ void AmorE_Setup(const AmorE_SK *sk,
     g2_neg(&rB, &rB);
     g2_add(&D, &V, &rB);
 
-    memcpy(pub->A, A_bytes, 64);
-    memcpy(pub->B, B_bytes, 128);
+    memcpy(pub->A, A_bytes, 96);
+    memcpy(pub->B, B_bytes, 192);
     g1_to_bytes(pub->C, &C);
     g2_to_bytes(pub->D, &D);
 }
@@ -205,25 +209,23 @@ int AmorE_Verify(const AmorE_SK *sk, const AmorE_Sec *sec, const AmorE_Out *out)
 /* -----------------------------------------------------------------------
  * G1/G2 generator bytes (constant, used every round)
  * ----------------------------------------------------------------------- */
-static const uint8_t G1GEN_BYTES[64] = {
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2
-};
-
-static uint8_t g_g2gen_bytes[128];   /* filled once in RunBenchmark */
-static uint8_t uart_buf[800];        /* receive buffer               */
+/* G1 generator bytes — populated at runtime from BLS_G1X/Y in the const header */
+static uint8_t G1GEN_BYTES[96];   /* filled once in RunBenchmark */
+/* G1 generator now populated at runtime from BLS_G1X/Y */
+static uint8_t g_g2gen_bytes[192];   /* filled once in RunBenchmark */
+static uint8_t uart_buf[1280];        /* receive buffer (gamma+rho = 1152, +headroom) */
 
 /* -----------------------------------------------------------------------
  * Inline helpers for the benchmark loop
  * ----------------------------------------------------------------------- */
 static const uint32_t BENCH_N[BENCH_N_COUNT] = {1, 10, 50};
 
-/* Encode pub into 384-byte flat buffer */
-static void pub_to_bytes(uint8_t out[384], const AmorE_Pub *pub) {
-    memcpy(out,       pub->A,  64);
-    memcpy(out + 64,  pub->B, 128);
-    memcpy(out + 192, pub->C,  64);
-    memcpy(out + 256, pub->D, 128);
+/* Encode pub into 576-byte flat buffer (96 + 192 + 96 + 192) */
+static void pub_to_bytes(uint8_t out[576], const AmorE_Pub *pub) {
+    memcpy(out,       pub->A,  96);
+    memcpy(out + 96,  pub->B, 192);
+    memcpy(out + 288, pub->C,  96);
+    memcpy(out + 384, pub->D, 192);
 }
 
 /* -----------------------------------------------------------------------
@@ -264,8 +266,12 @@ void AmorE_RunBenchmark(AmorE_BenchResults *res) {
     res->ots_ok     = 1;
     phase_set(PHASE_OTS_DONE, 0, 0, res->ots_cycles);
 
-    /* Pre-compute G2 generator bytes */
+    /* Pre-compute G1 and G2 generator bytes (BLS12-381 generators are not
+     * trivially expressible like BN254's (1,2), so we compute them at runtime). */
     {
+        G1Point P; g1_generator(&P);
+        g1_to_bytes(G1GEN_BYTES, &P);
+
         G2Point Q; g2_generator(&Q);
         g2_to_bytes(g_g2gen_bytes, &Q);
     }
@@ -277,7 +283,7 @@ void AmorE_RunBenchmark(AmorE_BenchResults *res) {
         for (uint32_t rnd = 0; rnd < N; rnd++) {
             AmorE_Pub pub;
             AmorE_Sec sec;
-            uint8_t   pkt[384];
+            uint8_t   pkt[576];
 
             /* Setup (blind) */
             phase_set(PHASE_BENCH_SETUP, bi, (uint16_t)rnd, 0);
@@ -288,7 +294,7 @@ void AmorE_RunBenchmark(AmorE_BenchResults *res) {
             /* Send */
             phase_set(PHASE_BENCH_SEND, bi, (uint16_t)rnd, 0);
             pub_to_bytes(pkt, &pub);
-            int rc = uart_send_packet(UART_CMD_SETUP, pkt, 384);
+            int rc = uart_send_packet(UART_CMD_SETUP, pkt, 576);
             res->rounds_sent[bi]++;
             res->total_rounds_sent++;
             if (rc != 0) {
@@ -314,7 +320,7 @@ void AmorE_RunBenchmark(AmorE_BenchResults *res) {
                 res->status = 0xDEAD0030u | bi;
                 return;
             }
-            if (rlen != 768) {
+            if (rlen != 1152) {
                 error_set(ERR_UART_LEN, bi, rnd);
                 res->rounds_uart_err[bi]++;
                 res->status = 0xDEAD0040u | bi;
@@ -325,8 +331,8 @@ void AmorE_RunBenchmark(AmorE_BenchResults *res) {
             /* Verify */
             phase_set(PHASE_BENCH_VERIFY, bi, (uint16_t)rnd, 0);
             AmorE_Out out_val;
-            memcpy(out_val.gamma, uart_buf,       384);
-            memcpy(out_val.rho,   uart_buf + 384, 384);
+            memcpy(out_val.gamma, uart_buf,       576);
+            memcpy(out_val.rho,   uart_buf + 576, 576);
             t0 = cyc();
             int ok = AmorE_Verify(&sk, &sec, &out_val);
             res->verify_total_cycles[bi] += cyc() - t0;
@@ -359,27 +365,27 @@ void AmorE_RunBenchmark(AmorE_BenchResults *res) {
     {
         AmorE_Pub pub;
         AmorE_Sec sec;
-        uint8_t   pkt[384];
+        uint8_t   pkt[576];
 
         phase_set(PHASE_SECURITY, 3, 0, 0);
         AmorE_Setup(&sk, G1GEN_BYTES, g_g2gen_bytes, &pub, &sec);
 
         phase_set(PHASE_BENCH_SEND, 3, 0, 0);
         pub_to_bytes(pkt, &pub);
-        uart_send_packet(UART_CMD_SETUP, pkt, 384);
+        uart_send_packet(UART_CMD_SETUP, pkt, 576);
         res->sec_sent = 1;
 
         phase_set(PHASE_SECURITY_WAIT, 3, 0, 0);
         uint8_t cmd; uint16_t rlen;
         int rc = uart_recv_packet(&cmd, uart_buf, &rlen, sizeof(uart_buf), UART_TIMEOUT_MS);
 
-        if (rc == 0 && cmd == UART_CMD_RESULT && rlen == 768) {
+        if (rc == 0 && cmd == UART_CMD_RESULT && rlen == 1152) {
             res->sec_recv_ok = 1;
 
             phase_set(PHASE_SECURITY_VFY, 3, 0, 0);
             AmorE_Out out_val;
-            memcpy(out_val.gamma, uart_buf,       384);
-            memcpy(out_val.rho,   uart_buf + 384, 384);
+            memcpy(out_val.gamma, uart_buf,       576);
+            memcpy(out_val.rho,   uart_buf + 576, 576);
             int ok = AmorE_Verify(&sk, &sec, &out_val);
 
             res->sec_verify_result = ok ? 1u : 0u;

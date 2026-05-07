@@ -72,3 +72,28 @@ relic_report_*.txt
 # .env
 # local_settings.sh
 relic_install_bn254/
+
+# Personal scratch files
+1.sh
+
+# Local backup of BN254 source files (also in git history)
+backup_bn254/
+
+# Host-side test binaries
+tools/bls12_381_port/host_test/test_fp
+tools/bls12_381_port/host_test/test_fp2
+tools/bls12_381_port/host_test/test_fp12
+tools/bls12_381_port/host_test/test_g
+
+# Local drafts (PR responses, emails) — never commit
+drafts/
+EMAIL_TO_DIEGO*
+PR_RESPONSE*
+*.draft.txt
+*.draft.md
+
+# Compiled host test binaries (executable, no .c extension)
+tools/bls12_381_port/host_test/test_fp12_bytes
+tools/bls12_381_port/host_test/test_fp12_load
+tools/bls12_381_port/host_test/test_gt_pow_q
+relic_install_bn254/

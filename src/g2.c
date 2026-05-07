@@ -1,12 +1,6 @@
 #include "g2.h"
-#include "bn128_const.h"
+#include "bls12_381_const.h"
 #include <string.h>
-
-/* Load b2 = 3/(9+u) in Fp2 */
-static void g2_b2(Fp2 *r) {
-    memcpy(r->c0, BN128_G2B2C0, 32);
-    memcpy(r->c1, BN128_G2B2C1, 32);
-}
 
 void g2_inf(G2Point *r) {
     fp2_one(&r->X); fp2_one(&r->Y); fp2_zero(&r->Z);
@@ -14,8 +8,8 @@ void g2_inf(G2Point *r) {
 int g2_is_inf(const G2Point *p) { return fp2_is_zero(&p->Z); }
 
 void g2_generator(G2Point *r) {
-    memcpy(r->X.c0, BN128_G2X0, 32); memcpy(r->X.c1, BN128_G2X1, 32);
-    memcpy(r->Y.c0, BN128_G2Y0, 32); memcpy(r->Y.c1, BN128_G2Y1, 32);
+    memcpy(r->X.c0, BLS_G2X0, 48); memcpy(r->X.c1, BLS_G2X1, 48);
+    memcpy(r->Y.c0, BLS_G2Y0, 48); memcpy(r->Y.c1, BLS_G2Y1, 48);
     fp2_one(&r->Z);
 }
 
@@ -115,14 +109,14 @@ void g2_to_affine(Fp2 *rx, Fp2 *ry, const G2Point *p) {
     fp2_mul(ry, &p->Y, &Zinv2);
 }
 
-void g2_to_bytes(uint8_t out[128], const G2Point *p) {
+void g2_to_bytes(uint8_t out[192], const G2Point *p) {
     Fp2 rx, ry;
     g2_to_affine(&rx, &ry, p);
     fp2_to_bytes(out,    &rx);
-    fp2_to_bytes(out+64, &ry);
+    fp2_to_bytes(out+96, &ry);
 }
-void g2_from_bytes(G2Point *r, const uint8_t in[128]) {
+void g2_from_bytes(G2Point *r, const uint8_t in[192]) {
     fp2_from_bytes(&r->X, in);
-    fp2_from_bytes(&r->Y, in+64);
+    fp2_from_bytes(&r->Y, in+96);
     fp2_one(&r->Z);
 }

@@ -20,9 +20,10 @@ against an optimized native pairing library (RELIC) on the same MCU.
 ## What is AmorE?
 
 AmorE — *Amortized Efficiency for Pairing Delegation* — is a recent
-protocol by Pérez Keilty, Aranha, Pagnin, and Rodríguez-Henríquez
-(eprint 2025/542) that lets a memory-constrained device outsource
-pairing computations to an untrusted helper while preserving:
+protocol by **Antonio Pérez Keilty, Diego F. Aranha, Elena Pagnin, and
+Francisco Rodríguez-Henríquez** (eprint 2025/542) that lets a
+memory-constrained device outsource pairing computations to an untrusted
+helper while preserving:
 
 - **Input privacy** — the helper never sees the plaintext inputs
   `(A, B)`; only blinded versions are transmitted.
@@ -59,18 +60,19 @@ backend** (`regression_test.elf`) used in the validation analysis.
 ## Hardware setup
 
 ```
- ┌─────────────────┐        USB (ST-Link)       ┌──────────────────────┐
- │                 │◄──────────────────────────►│  STM32F407 Discovery │
- │     Laptop      │                            │                      │
- │                 │        LAN (SSH/SCP)        │  PA2 TX ──► GPIO15   │
- │                 │◄──────────────────────────►│  PA3 RX ◄── GPIO14   │
- └─────────────────┘                             └──────────┬───────────┘
-                                                            │ UART 921600
-                                                 ┌──────────▼───────────┐
-                                                 │  Raspberry Pi 3B     │
-                                                 │  /dev/ttyAMA0        │
-                                                 │  server.py           │
-                                                 └──────────────────────┘
+                        ┌───────────── ────┐
+                        │     Laptop       │
+                        └────┬───── ──┬────┘
+              USB (ST-Link)  │        │  LAN (SSH/SCP)
+                             │        │
+                             ▼        ▼
+      ┌──────────────────────┐        ┌──────────────────────┐
+      │  STM32F407 Discovery │        │   Raspberry Pi 3B    │
+      │                      │  UART  │                      │
+      │     PA2 TX ──────► GPIO15 (RX)│  /dev/ttyAMA0        │
+      │     PA3 RX ◄────── GPIO14 (TX)│  server.py           │
+      │                      │ 921600 │                      │
+      └──────────────────────┘        └──────────────────────┘
 ```
 
 - **Client (STM32F407 Discovery):** runs the AmorE protocol; 168 MHz
@@ -100,11 +102,11 @@ results from one run on STM32F407 Discovery @ 168 MHz:
 
 ### Memory footprint
 
-| Section          | Size       | % of available           |
-|------------------|------------|--------------------------|
-| Flash (`.text`)  | 18,532 B   | 1.77 % of 1 MB           |
-| SRAM (`.bss`)    | 3,156 B    | 1.65 % of 192 KB         |
-| **Total ELF**    | **21,708 B** | —                      |
+| Section                    | Size         | % of available      |
+|----------------------------|--------------|---------------------|
+| Flash (`.text`)            | 18,532 B     | 1.77 % of 1 MB      |
+| SRAM (`.bss` + `.data`)    | 3,176 B      | 1.62 % of 192 KB    |
+| **Total ELF**              | **21,708 B** | —                   |
 
 ### Timing (DWT cycle counter at 168 MHz)
 
@@ -186,14 +188,13 @@ cmake --build build --target flash
 ```
 
 This produces three ELFs:
-
 - `amorebn128.elf` — the AmorE client (the main contribution).
 - `relic_bench.elf` — local pairing benchmark via RELIC, used for the
   apples-to-apples comparison.
 - `regression_test.elf` — verifies that the RELIC `arm-asm-254` assembly
   backend produces numerically correct outputs for the patched
-  toolchain (see the companion repository
-  [`relic-arm-m4-fix`](https://github.com/kobibr/relic-arm-m4-fix)).
+  toolchain (see the upstream pull request
+  [relic-toolkit/relic#317](https://github.com/relic-toolkit/relic/pull/317)).
 
 ## Running a full benchmark
 
@@ -212,24 +213,25 @@ Output includes:
 - STM32-side telemetry (cycles, phases, verification outcomes).
 - A combined report under `logs/`.
 
-## Companion repository
+## RELIC toolchain fix
 
-The RELIC `arm-asm-254` Cortex-M4 toolchain fix used by this project's
-`relic_bench.elf` and `regression_test.elf` is published separately:
+The RELIC `arm-asm-254` Cortex-M4 backend used by this project's
+`relic_bench.elf` and `regression_test.elf` requires a small toolchain
+fix to build with modern `arm-none-eabi-gcc` (≥ 11). The fix has been
+submitted upstream:
 
-→ **[`kobibr/relic-arm-m4-fix`](https://github.com/kobibr/relic-arm-m4-fix)**
+→ **[relic-toolkit/relic#317](https://github.com/relic-toolkit/relic/pull/317)**
 
-That repository contains the architecture and ITstate fixes needed to
-build RELIC's hand-tuned BN254 assembly backend with modern
-`arm-none-eabi-gcc` (≥ 11), the regression-test harness, and the upstream
-RELIC fork.
+Until merged upstream, `scripts/build-relic.sh` will use the author's fork at
+[github.com/kobibr/relic](https://github.com/kobibr/relic) on branch
+`arm-m4-toolchain-fix`.
 
 ## Citing
 
 If you build on this work, please cite the original AmorE paper:
 
 > A. Pérez Keilty, D. F. Aranha, E. Pagnin, F. Rodríguez-Henríquez.
-> *That's AmorE: Amortized Efficiency for Pairing Delegation.*
+> *AmorE: Amortized Efficiency for Pairing Delegation.*
 > Cryptology ePrint Archive, Paper 2025/542, 2025.
 > [https://eprint.iacr.org/2025/542](https://eprint.iacr.org/2025/542)
 

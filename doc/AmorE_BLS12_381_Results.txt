@@ -15,11 +15,10 @@
   STM32F407 Cortex-M4 platform. Three findings stand out:
 
 
-  ▌ FINDING 1 — Protocol correctness: AmorE is portable
+  ▌ FINDING 1 — Protocol correctness
   
-    The AmorE algorithm, originally designed for BN254, transfers cleanly
-    to BLS12-381 without protocol modifications. This is empirically
-    confirmed by:
+    Validation results from a 92-minute benchmark with 61 honest rounds
+    plus 1 malicious round, on the binary at SHA256 7303fa43...
     
         • 61 / 61  honest rounds verified            (100.0%)
         •  1 /  1  malicious rounds rejected         (100.0%)
@@ -27,18 +26,16 @@
         •  8 /  8  implementation validation suite checks pass
         •  457 /457 host-side unit tests pass
     
-    The validation suite explicitly cross-checks 20 curve constants against
-    py_ecc.bls12_381 (independent reference) and verifies that malicious-
-    round rejection occurs in Verify computation (not via crash or timeout).
-    This is more rigorous than typical port verification — typical practice
-    would settle for "it builds and the happy path passes."
+    The validation suite cross-checks 20 curve constants against
+    py_ecc.bls12_381 (independent reference) and verifies that
+    malicious-round rejection occurs within the Verify computation
+    (last_error=0, sec_verify_result=0), not via crash or timeout.
     
-    KEY CLAIM: AmorE is a curve-agnostic protocol. The BN254 → BLS12-381
-    port required only field/curve/scalar arithmetic changes; the protocol
-    logic in amore.c is unchanged.
+    The BN254 -> BLS12-381 port required only field/curve/scalar
+    arithmetic changes; the protocol logic in amore.c is unchanged.
 
 
-  ▌ FINDING 2 — Memory footprint: AmorE is practical on constrained devices
+  ▌ FINDING 2 — Memory footprint
   
     The complete BLS12-381 implementation occupies:
     
@@ -50,13 +47,11 @@
         Total Flash         :  ~15.5 KiB    (98.5% headroom)
         Total SRAM          :  ~35.5 KiB    (82.0% headroom)
     
-    KEY CLAIM: AmorE on BLS12-381 leaves >80% of typical IoT-class device
-    memory free for application logic, OS, and communication stacks. The
-    protocol is genuinely deployable on constrained embedded hardware,
-    not just a benchmark curiosity.
+    Memory remaining for application code: 1008 KiB Flash,
+    156 KiB SRAM (out of 1024 KiB and 192 KiB respectively).
 
 
-  ▌ FINDING 3 — Theoretical consistency: the 5× slowdown matches prediction
+  ▌ FINDING 3 — Slowdown vs BN254 baseline
   
     Comparing to the BN254 baseline on identical hardware, the 254→381
     bit field expansion produces a 5.03× slowdown in per-round amortized
@@ -70,19 +65,20 @@
         Predicted slowdown:                     ~4.5–5.5×
         Measured slowdown:                       5.03×  ✓
     
-    KEY CLAIM: The implementation faithfully reflects the field-arithmetic
-    cost scaling. A non-conforming ratio (e.g. 2× or 10×) would indicate
-    either a bug or an unaccounted-for optimization. The match between
-    prediction and measurement is *indirect validation* that the port has
-    no hidden errors in the inner-loop arithmetic.
+    A measured ratio outside the predicted 4.5-5.5x range would
+    warrant investigation: too-slow could indicate a bug; too-fast
+    an unaccounted optimization. The agreement between prediction
+    and measurement is consistent with the inner-loop arithmetic
+    being correctly implemented, complementary to the unit tests
+    in Section 3.
 
 
   ─────────────────────────────────────────────────────────────────────
-  Combined, these three findings characterize the performance of AmorE
-  on a 381-bit pairing-friendly curve on Cortex-M4 hardware:
+  Numerical summary:
   
-    It works (correctness), it fits (memory), and it scales as expected
-    (timing matches theoretical prediction within 1%).
+    Correctness:  61/61 honest verified, 1/1 malicious rejected
+    Memory:       1.48% Flash, 17.85% SRAM
+    Timing:       5.03x slowdown vs BN254 (predicted: 4.5-5.5x)
   ─────────────────────────────────────────────────────────────────────
 
 
@@ -133,10 +129,7 @@
             (8 limbs) in BN254. Roughly 50% more SRAM for the cost of
             ~50% more field bits. Consistent.
   
-  Headroom for application code: 1008+ KiB Flash, 156+ KiB SRAM.
-  This is substantial: in the same hardware budget, one could add an
-  RTOS, a TLS stack, sensor firmware, and a debug shell — and still
-  have AmorE running pairings.
+  Remaining for application code: 1008 KiB Flash, 156 KiB SRAM.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   3. PROTOCOL CORRECTNESS  (see Finding 1)
@@ -176,7 +169,7 @@
                                    OneTimeSetup ran fp12_exp (non-zero);
                                    61 rounds with distinct verify results
 
-  All eight checks PASS. The numbers in this report are trustworthy.
+  All eight checks PASS.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   4. STM32 CLIENT TIMING  (DWT cycle counter @ 168 MHz)
@@ -213,29 +206,18 @@
   5. COMPARISON: AmorE vs DIRECT PAIRING (RELIC)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  Direct pairing on STM32 (RELIC-toolkit, BLS12-381):
-    Single pairing e(P, Q):       523.4 ms
-    Three pairings (as in AmorE): 1,570.2 ms  (raw baseline)
+  Single pairing e(P, Q) via RELIC pp_map_oatep_k12:    523.4 ms
+  3 x direct pairing:                                  1,570.2 ms
+  AmorE per-round amortized (this work, N=50):         1,919.3 ms
 
-  AmorE per-round on STM32 (this work):
-    Per-round amortized (N=50):   1,919.3 ms
+  AmorE / 3x direct ratio: 1.22x.
 
-  Discussion:
-    AmorE shifts pairing computation to the server, reducing STM32 work to
-    only scalar multiplications and one Fp12 exponentiation. The 1,919 ms
-    per-round is total client work (Setup + UART + Verify), comparable to
-    3 direct pairings, but with the security guarantee that the server
-    cannot lie about the result.
-    
-    AmorE on BLS12-381 does NOT compete with direct pairing on raw
-    throughput — that is not its objective. The value proposition is
-    DELEGATION: a battery-constrained device offloads expensive Miller
-    loops and final exponentiations to a server, reducing the device's
-    computational and power burden, while retaining cryptographic
-    integrity through the verification check.
-    
-    Energy-budget comparison (CPU work × duration on each side) is not
-    yet measured for this port, but is a natural follow-up.
+  On Cortex-M4 with BLS12-381, AmorE per-round exceeds the cost of
+  3 direct pairings. The client-side work consists of scalar
+  multiplications and one Fp12 exponentiation; pairings are
+  delegated to the server. Whether delegation is preferable in
+  this regime depends on factors not measured here (energy,
+  server trust assumptions, network constraints, latency).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   6. COMPARISON: BLS12-381 vs BN254  (see Finding 3)

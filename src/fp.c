@@ -1,26 +1,33 @@
 #include "fp.h"
-#include "bn128_const.h"
+#include "bls12_381_const.h"
 #include <string.h>
 
 /* -----------------------------------------------------------------------
- * CIOS Montgomery multiplication: r = a * b * R^{-1} mod p
- * Reference: Koç, Acar, Kaliski 1996 "Analyzing and Comparing Montgomery
- * Multiplication Algorithms".
+ * BLS12-381 Fp arithmetic, 12 × 32-bit Montgomery form.
+ * Modulus is BLS_P (defined in bls12_381_const.h).
+ *
+ * Phase A: fp_zero, fp_one, fp_copy, fp_eq, fp_is_zero,
+ *          fp_add, fp_sub, fp_neg
+ *
+ * Phase B (next): fp_mul (CIOS Montgomery)
+ * Phase C (after): fp_sqr, fp_inv, conversions, serialisation
  * ----------------------------------------------------------------------- */
 
-/* Compare a[8] vs b[8]; return -1/0/+1 for a<b/a==b/a>b */
-static int fp_cmp(const uint32_t a[8], const uint32_t b[8]) {
-    for (int i = 7; i >= 0; i--) {
+/* Compare a[N] vs b[N]; return -1/0/+1 for a<b/a==b/a>b */
+static int fp_cmp(const uint32_t a[FP_LIMBS], const uint32_t b[FP_LIMBS]) {
+    for (int i = FP_LIMBS - 1; i >= 0; i--) {
         if (a[i] < b[i]) return -1;
         if (a[i] > b[i]) return  1;
     }
     return 0;
 }
 
-/* r = a - b, assuming a >= b.  Returns borrow (should be 0). */
-static uint32_t fp_raw_sub(uint32_t r[8], const uint32_t a[8], const uint32_t b[8]) {
+/* r = a - b, assuming a >= b. Returns borrow (should be 0). */
+static uint32_t fp_raw_sub(uint32_t r[FP_LIMBS],
+                           const uint32_t a[FP_LIMBS],
+                           const uint32_t b[FP_LIMBS]) {
     uint64_t borrow = 0;
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < FP_LIMBS; i++) {
         uint64_t x = (uint64_t)a[i] - b[i] - borrow;
         r[i]   = (uint32_t)x;
         borrow = (x >> 63) & 1;
@@ -28,93 +35,47 @@ static uint32_t fp_raw_sub(uint32_t r[8], const uint32_t a[8], const uint32_t b[
     return (uint32_t)borrow;
 }
 
-/* r = a + b mod p  (no Montgomery) */
-static void fp_raw_add_mod(uint32_t r[8], const uint32_t a[8], const uint32_t b[8]) {
+/* r = a + b mod p (no Montgomery work, just modular addition).
+ * Assumes a, b < p. */
+static void fp_raw_add_mod(uint32_t r[FP_LIMBS],
+                           const uint32_t a[FP_LIMBS],
+                           const uint32_t b[FP_LIMBS]) {
     uint64_t carry = 0;
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < FP_LIMBS; i++) {
         uint64_t x = (uint64_t)a[i] + b[i] + carry;
         r[i]  = (uint32_t)x;
         carry = x >> 32;
     }
-    /* carry may be 1 OR result may be >= p even without carry */
-    if (carry || fp_cmp(r, BN128_P) >= 0)
-        fp_raw_sub(r, r, BN128_P);
-}
-
-/* Core CIOS step – accumulates a[8]*scalar into T[9], then one Montgomery step */
-static void cios_mul(uint32_t r[8], const uint32_t a[8], const uint32_t b[8],
-                     const uint32_t m[8], uint32_t mp)
-{
-    uint64_t T[9] = {0};
-
-    for (int i = 0; i < 8; i++) {
-        /* Step 1: T += a * b[i] */
-        uint64_t carry = 0;
-        for (int j = 0; j < 8; j++) {
-            uint64_t x = T[j] + (uint64_t)a[j] * b[i] + carry;
-            T[j]  = x & 0xFFFFFFFFu;
-            carry = x >> 32;
-        }
-        T[8] += carry;
-
-        /* Step 2: Montgomery reduction by one word */
-        uint32_t k = (uint32_t)T[0] * mp;
-        carry = 0;
-        for (int j = 0; j < 8; j++) {
-            uint64_t x = T[j] + (uint64_t)m[j] * k + carry;
-            T[j]  = x & 0xFFFFFFFFu;
-            carry = x >> 32;
-        }
-        T[8] += carry;
-
-        /* Shift T right by one word */
-        for (int j = 0; j < 8; j++) T[j] = T[j + 1];
-        T[8] = 0;
-    }
-
-    /* Conditional final subtraction */
-    uint32_t tmp[8];
-    uint64_t borrow = 0;
-    for (int i = 0; i < 8; i++) {
-        uint64_t x = (uint64_t)T[i] - m[i] - borrow;
-        tmp[i]  = (uint32_t)x;
-        borrow  = (x >> 63) & 1;
-    }
-    /* Use tmp if T >= m (no borrow) */
-    /* IMPORTANT: T is uint64_t[9]. After CIOS each T[i] < 2^32.
-     * Cast to uint32_t* would interleave lo/hi halves — WRONG.
-     * Must copy T[i] individually as uint32_t. */
-    if (borrow) {
-        for (int i = 0; i < 8; i++) r[i] = (uint32_t)T[i];
-    } else {
-        for (int i = 0; i < 8; i++) r[i] = tmp[i];
+    /* If carry OR result >= p, subtract p */
+    if (carry || fp_cmp(r, BLS_P) >= 0) {
+        fp_raw_sub(r, r, BLS_P);
     }
 }
 
-/* ---- Public API -------------------------------------------------------- */
+/* ===== Public API ===== */
 
-void fp_zero(Fp r) { memset(r, 0, 32); }
+void fp_zero(Fp r) {
+    memset(r, 0, sizeof(Fp));
+}
 
-void fp_one(Fp r)  { memcpy(r, BN128_R_FP, 32); }   /* 1 in Mont = R mod p */
+void fp_one(Fp r) {
+    /* Montgomery form of 1 is R mod p */
+    memcpy(r, BLS_R_FP, sizeof(Fp));
+}
 
-void fp_copy(Fp r, const Fp a)  { memcpy(r, a, 32); }
+void fp_copy(Fp r, const Fp a) {
+    memcpy(r, a, sizeof(Fp));
+}
 
 int fp_is_zero(const Fp a) {
-    uint32_t acc = 0;
-    for (int i = 0; i < 8; i++) acc |= a[i];
-    return acc == 0;
+    for (int i = 0; i < FP_LIMBS; i++) {
+        if (a[i] != 0) return 0;
+    }
+    return 1;
 }
 
 int fp_eq(const Fp a, const Fp b) {
-    return memcmp(a, b, 32) == 0;
-}
-
-void fp_mul(Fp r, const Fp a, const Fp b) {
-    cios_mul(r, a, b, BN128_P, BN128_N0P_FP);
-}
-
-void fp_sqr(Fp r, const Fp a) {
-    cios_mul(r, a, a, BN128_P, BN128_N0P_FP);
+    return fp_cmp(a, b) == 0;
 }
 
 void fp_add(Fp r, const Fp a, const Fp b) {
@@ -122,84 +83,217 @@ void fp_add(Fp r, const Fp a, const Fp b) {
 }
 
 void fp_sub(Fp r, const Fp a, const Fp b) {
-    if (fp_cmp(a, b) < 0) {
-        /* a < b → r = p - (b - a) = p + a - b */
-        uint32_t tmp[8];
-        fp_raw_sub(tmp, b, a);
-        fp_raw_sub(r, BN128_P, tmp);
-    } else {
+    /* r = a - b mod p */
+    if (fp_cmp(a, b) >= 0) {
         fp_raw_sub(r, a, b);
+    } else {
+        /* a < b: compute (a + p) - b */
+        uint32_t tmp[FP_LIMBS];
+        uint64_t carry = 0;
+        for (int i = 0; i < FP_LIMBS; i++) {
+            uint64_t x = (uint64_t)a[i] + BLS_P[i] + carry;
+            tmp[i] = (uint32_t)x;
+            carry  = x >> 32;
+        }
+        fp_raw_sub(r, tmp, b);
     }
 }
 
 void fp_neg(Fp r, const Fp a) {
-    if (fp_is_zero(a)) { fp_zero(r); return; }
-    fp_raw_sub(r, BN128_P, a);
+    if (fp_is_zero(a)) {
+        fp_zero(r);
+    } else {
+        fp_raw_sub(r, BLS_P, a);
+    }
 }
 
-/* r = a * R^{-1} mod p  (convert out of Montgomery) */
-void fp_from_mont(Fp r, const Fp a_mont) {
-    /* Multiply by 1 in standard form (not Mont.) = [1, 0, 0, ...] */
-    static const uint32_t one_plain[8] = {1,0,0,0,0,0,0,0};
-    cios_mul(r, a_mont, one_plain, BN128_P, BN128_N0P_FP);
+/* ===== Phase B: CIOS Montgomery multiplication =====
+ *
+ * Computes r = a * b * R^{-1} mod p, where R = 2^(32 * FP_LIMBS) = 2^384.
+ *
+ * If a, b are in Montgomery form (a*R mod p, b*R mod p), then:
+ *   r = (aR)(bR)R^{-1} = abR = (ab)_mont
+ * which is exactly the Montgomery form of a*b.
+ *
+ * Reference: Koc, Acar, Kaliski 1996 "Analyzing and Comparing Montgomery
+ *            Multiplication Algorithms".
+ *
+ * Loop invariant: at the start of iteration i, T[N+1..0] holds an
+ * intermediate value that is always less than 2*p, so T[N+1] = 0
+ * (T[N] may be 0 or 1 only).
+ */
+void fp_mul(Fp r, const Fp a, const Fp b) {
+    /* Accumulator: FP_LIMBS + 2 words.
+     * Each cell holds 32 valid bits; uint64_t gives headroom for carry. */
+    uint64_t T[FP_LIMBS + 2];
+    for (int i = 0; i <= FP_LIMBS + 1; i++) T[i] = 0;
+
+    for (int i = 0; i < FP_LIMBS; i++) {
+        /* Step 1: T += a * b[i] */
+        uint64_t carry = 0;
+        for (int j = 0; j < FP_LIMBS; j++) {
+            uint64_t x = T[j] + (uint64_t)a[j] * b[i] + carry;
+            T[j]  = x & 0xFFFFFFFFu;
+            carry = x >> 32;
+        }
+        T[FP_LIMBS] += carry;
+        /* T[FP_LIMBS+1] absorbs any rare carry from T[FP_LIMBS] += carry */
+        T[FP_LIMBS + 1] += (T[FP_LIMBS] >> 32);
+        T[FP_LIMBS] &= 0xFFFFFFFFu;
+
+        /* Step 2: Montgomery reduction by one word.
+         * Choose k such that adding k * p zeros out T[0]:
+         *   k = T[0] * (-p^{-1}) mod 2^32 = T[0] * N0_P mod 2^32
+         */
+        uint32_t k = (uint32_t)T[0] * BLS_N0P_FP;
+        carry = 0;
+        for (int j = 0; j < FP_LIMBS; j++) {
+            uint64_t x = T[j] + (uint64_t)BLS_P[j] * k + carry;
+            T[j]  = x & 0xFFFFFFFFu;
+            carry = x >> 32;
+        }
+        T[FP_LIMBS] += carry;
+        T[FP_LIMBS + 1] += (T[FP_LIMBS] >> 32);
+        T[FP_LIMBS] &= 0xFFFFFFFFu;
+
+        /* By construction T[0] is now 0. Shift T right by one word. */
+        for (int j = 0; j < FP_LIMBS + 1; j++) {
+            T[j] = T[j + 1];
+        }
+        T[FP_LIMBS + 1] = 0;
+    }
+
+    /* T now holds a value in [0, 2p). Final conditional subtract. */
+    /* Pack T[0..FP_LIMBS-1] into a uint32_t array for fp_cmp / fp_raw_sub */
+    uint32_t result[FP_LIMBS];
+    for (int i = 0; i < FP_LIMBS; i++) {
+        result[i] = (uint32_t)T[i];
+    }
+
+    /* If T[FP_LIMBS] != 0, definitely >= p (since p fits in FP_LIMBS words).
+     * Otherwise check result vs p. */
+    if (T[FP_LIMBS] != 0 || fp_cmp(result, BLS_P) >= 0) {
+        fp_raw_sub(r, result, BLS_P);
+    } else {
+        memcpy(r, result, sizeof(Fp));
+    }
 }
 
-/* r = a * R mod p  (convert into Montgomery) */
+/* ===== Phase C: helpers built on fp_mul ===== */
+
+/* r = a * a mod p (in Montgomery form).
+ * For now: just call fp_mul. Specialized squaring is a future optimization. */
+void fp_sqr(Fp r, const Fp a) {
+    fp_mul(r, a, a);
+}
+
+/* Convert plain value to Montgomery form: r = a * R mod p.
+ * Trick: fp_mul does (x * y * R^{-1}). So:
+ *   fp_mul(a_plain, R^2) = a_plain * R^2 * R^{-1} = a_plain * R = (a_plain)_mont
+ */
 void fp_to_mont(Fp r, const Fp a_plain) {
-    cios_mul(r, a_plain, BN128_R2_FP, BN128_P, BN128_N0P_FP);
+    fp_mul(r, a_plain, BLS_R2_FP);
 }
 
-/* r = x * R mod p  (small integer x into Montgomery form) */
+/* Convert from Montgomery form: r = a_mont * R^{-1} = a_plain.
+ * Trick: fp_mul(a_mont, ONE_PLAIN) = a_mont * 1 * R^{-1} = a_plain
+ * where ONE_PLAIN = {1, 0, 0, ..., 0} (the plain integer 1, not Montgomery).
+ */
+void fp_from_mont(Fp r, const Fp a_mont) {
+    Fp one_plain;
+    fp_zero(one_plain);
+    one_plain[0] = 1;
+    fp_mul(r, a_mont, one_plain);
+}
+
+/* r = x * R mod p (Montgomery form of small integer x). */
 void fp_from_u32(Fp r, uint32_t x) {
-    Fp tmp = {x, 0,0,0,0,0,0,0};
-    cios_mul(r, tmp, BN128_R2_FP, BN128_P, BN128_N0P_FP);
+    Fp x_plain;
+    fp_zero(x_plain);
+    x_plain[0] = x;
+    fp_to_mont(r, x_plain);
 }
 
-/* Inversion: r = a^{p-2} mod p using Fermat's little theorem.
- * Uses binary square-and-multiply on the exponent p-2.
- * p-2 has 254 significant bits. */
+/* Modular inverse via Fermat's little theorem: a^(p-2) mod p.
+ * Inputs/outputs in Montgomery form.
+ *
+ * We need to compute a^(p-2) where a is in Montgomery form.
+ * Square-and-multiply with Montgomery arithmetic works directly:
+ *   if a is Mont(a_plain), then a^k computed via fp_mul / fp_sqr
+ *   gives Mont(a_plain^k) (each mul/sqr keeps the Mont form).
+ *
+ * We scan p-2 from MSB to LSB. p has 381 bits, so p-2 also has 381 bits.
+ *
+ * Note: BLS_P stored as 12 little-endian limbs; p-2 = BLS_P with limb[0] -= 2.
+ * Since BLS_P[0] = 0xffffaaab > 2, no borrow.
+ */
 void fp_inv(Fp r, const Fp a) {
-    /* exponent = p - 2 */
-    static const uint32_t exp[8] = {
-        0xd87cfd45,0x3c208c16,0x6871ca8d,0x97816a91,
-        0x8181585d,0xb85045b6,0xe131a029,0x30644e72};
+    if (fp_is_zero(a)) {
+        /* By convention 0^{-1} = 0 */
+        fp_zero(r);
+        return;
+    }
 
-    Fp base, result;
-    fp_copy(base, a);
-    fp_one(result);
+    /* Compute exponent p - 2 as 12-limb little-endian array */
+    uint32_t exp[FP_LIMBS];
+    memcpy(exp, BLS_P, sizeof(exp));
+    /* exp -= 2 (BLS_P[0] = 0xffffaaab > 2, so no borrow) */
+    exp[0] -= 2;
 
-    for (int w = 0; w < 8; w++) {
-        uint32_t limb = exp[w];
-        for (int b = 0; b < 32; b++) {
-            if (limb & 1u) fp_mul(result, result, base);
-            fp_sqr(base, base);
-            limb >>= 1;
+    /* Square-and-multiply, MSB-first */
+    Fp result;
+    fp_one(result);  /* start with R mod p (Montgomery form of 1) */
+
+    int started = 0;  /* skip leading zero bits */
+    for (int i = FP_LIMBS - 1; i >= 0; i--) {
+        for (int b = 31; b >= 0; b--) {
+            int bit = (exp[i] >> b) & 1;
+            if (started) {
+                fp_sqr(result, result);
+                if (bit) {
+                    fp_mul(result, result, a);
+                }
+            } else if (bit) {
+                /* First 1-bit: result := a (no square needed) */
+                fp_copy(result, a);
+                started = 1;
+            }
         }
     }
+
     fp_copy(r, result);
 }
 
-/* Serialise to 32-byte big-endian (raw field value, not Montgomery) */
-void fp_to_bytes(uint8_t out[32], const Fp a) {
-    Fp raw;
-    fp_from_mont(raw, a);
-    for (int i = 0; i < 8; i++) {
-        uint32_t limb = raw[7 - i];   /* big-endian limb order */
-        out[4*i+0] = (uint8_t)(limb >> 24);
-        out[4*i+1] = (uint8_t)(limb >> 16);
-        out[4*i+2] = (uint8_t)(limb >>  8);
-        out[4*i+3] = (uint8_t)(limb      );
+/* Serialize Fp element to 48 bytes, big-endian (NOT Montgomery — convert first).
+ * Wait — by convention here, the input is in Montgomery form, and we
+ * serialize the *plain* value as 48 bytes BE (matching standard wire format).
+ */
+void fp_to_bytes(uint8_t out[48], const Fp a) {
+    /* First convert from Montgomery to plain */
+    Fp a_plain;
+    fp_from_mont(a_plain, a);
+
+    /* Now write big-endian: limb[11] first (most significant) */
+    for (int i = 0; i < FP_LIMBS; i++) {
+        uint32_t w = a_plain[FP_LIMBS - 1 - i];
+        out[4*i + 0] = (uint8_t)(w >> 24);
+        out[4*i + 1] = (uint8_t)(w >> 16);
+        out[4*i + 2] = (uint8_t)(w >> 8);
+        out[4*i + 3] = (uint8_t)(w);
     }
 }
 
-/* Deserialise from 32-byte big-endian (raw value → Montgomery form) */
-void fp_from_bytes(Fp r, const uint8_t in[32]) {
-    uint32_t tmp[8];
-    for (int i = 0; i < 8; i++) {
-        tmp[7-i] = ((uint32_t)in[4*i+0] << 24)
-                 | ((uint32_t)in[4*i+1] << 16)
-                 | ((uint32_t)in[4*i+2] <<  8)
-                 | ((uint32_t)in[4*i+3]      );
+/* Deserialize from 48-byte big-endian into Montgomery form. */
+void fp_from_bytes(Fp r, const uint8_t in[48]) {
+    Fp r_plain;
+    /* Read big-endian: most significant 4 bytes go into limb[11] */
+    for (int i = 0; i < FP_LIMBS; i++) {
+        uint32_t w = ((uint32_t)in[4*i + 0] << 24)
+                   | ((uint32_t)in[4*i + 1] << 16)
+                   | ((uint32_t)in[4*i + 2] << 8)
+                   | ((uint32_t)in[4*i + 3]);
+        r_plain[FP_LIMBS - 1 - i] = w;
     }
-    fp_to_mont(r, tmp);
+    /* Convert to Montgomery form */
+    fp_to_mont(r, r_plain);
 }

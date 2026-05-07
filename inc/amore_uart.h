@@ -10,7 +10,7 @@
 #define UART_CMD_STATUS  0x30u   /* Client → Server: 1 byte (0=fail,1=ok)       */
 #define UART_CMD_READY   0x40u   /* Server → Client: 1 byte mode (0=honest,1=mal) */
 
-#define UART_TIMEOUT_MS  120000u  /* 10-second timeout for server response */
+#define UART_TIMEOUT_MS  120000u  /* 120-second timeout for server response */
 
 void     uart_init(uint32_t baud);
 int      uart_send(const uint8_t *data, uint16_t len);  /* 0=ok */

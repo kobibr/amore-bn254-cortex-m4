@@ -2,15 +2,18 @@
 #include <string.h>
 
 /*
- * Fp12  —  degree-12 extension of Fp with modulus  x^12 - 18*x^6 + 82 = 0
+ * Fp12  —  degree-12 extension of Fp with modulus  x^12 - 2*x^6 + 2 = 0
  *
- * This representation is IDENTICAL to py_ecc's bn128 FQ12, so GT elements
+ * This representation is IDENTICAL to py_ecc's bls12_381 FQ12, so GT elements
  * serialised by the Python server are directly usable by this C code.
  *
  * Element: a[0] + a[1]*x + ... + a[11]*x^11  (12 Fp coefficients)
  *
- * Reduction rule from  x^12 = 18*x^6 - 82:
- *   For k >= 12:  coeff[k] contributes  +18*coeff[k-6]  and  -82*coeff[k-12]
+ * Reduction rule from  x^12 = 2*x^6 - 2:
+ *   For k >= 12:  coeff[k] contributes  +2*coeff[k-6]  and  -2*coeff[k-12]
+ *
+ * Note: BLS12-381 modulus has very small constants (2 vs BN254's 18 and 82),
+ * making the reduction much simpler — just doublings!
  */
 
 /* ── Fp12 element stored as 12 Fp coefficients ── */
@@ -47,10 +50,10 @@ int fp12_eq(const Fp12 *a, const Fp12 *b) {
 
 /*
  * fp12_mul: schoolbook multiplication of two degree-11 polynomials modulo
- *           x^12 - 18*x^6 + 82, all coefficients in Fp.
+ *           x^12 - 2*x^6 + 2, all coefficients in Fp.
  *
  * Step 1: compute unreduced product (degree 22), cost = 144 fp_mul + ~132 fp_add
- * Step 2: reduce coefficients 22..12 using x^12 = 18*x^6 - 82
+ * Step 2: reduce coefficients 22..12 using x^12 = 2*x^6 - 2
  */
 void fp12_mul(Fp12 *r, const Fp12 *a, const Fp12 *b) {
     const Fp12Flat *fa = fp12_flat_c(a);
@@ -71,39 +74,19 @@ void fp12_mul(Fp12 *r, const Fp12 *a, const Fp12 *b) {
 
     /*
      * Reduce: for k = 22 down to 12
-     *   tmp[k-6]  += 18 * tmp[k]      (from x^k = x^{k-12} * 18x^6)
-     *   tmp[k-12] -= 82 * tmp[k]
+     *   tmp[k-6]  += 2 * tmp[k]
+     *   tmp[k-12] -= 2 * tmp[k]
      *   tmp[k] = 0
-     *
-     * Multiply by 18: 18*t = 16*t + 2*t  (3 fp_add each)
-     * Multiply by 82: 82*t = 64*t + 16*t + 2*t  (4 fp_add each)
      */
     for (int k = 22; k >= 12; k--) {
         Fp c;
         fp_copy(c, tmp[k]);
         if (fp_is_zero(c)) continue;
 
-        /* tmp[k-6] += 18*c */
-        Fp t18;
-        fp_add(t18, c, c);          /* 2c */
-        {
-            Fp t4; fp_add(t4,t18,t18);   /* 4c */
-            Fp t16; fp_add(t16,t4,t4); fp_add(t16,t16,t16); /* 16c */
-            fp_add(t18, t18, t16);  /* 18c = 2c + 16c */
-        }
-        fp_add(tmp[k-6], tmp[k-6], t18);
-
-        /* tmp[k-12] -= 82*c  (82 = 64+16+2) */
-        Fp t2, t16, t64, t82;
-        fp_add(t2,  c,   c);            /* 2 */
-        fp_add(t16, t2,  t2);
-        fp_add(t16, t16, t16);
-        fp_add(t16, t16, t16);          /* 16 */
-        fp_add(t64, t16, t16);
-        fp_add(t64, t64, t64);          /* 64 */
-        fp_add(t82, t64, t16);
-        fp_add(t82, t82, t2);           /* 82 */
-        fp_sub(tmp[k-12], tmp[k-12], t82);
+        Fp t2;
+        fp_add(t2, c, c);  /* 2*c */
+        fp_add(tmp[k-6], tmp[k-6], t2);
+        fp_sub(tmp[k-12], tmp[k-12], t2);
 
         fp_zero(tmp[k]);
     }
@@ -117,7 +100,7 @@ void fp12_sqr(Fp12 *r, const Fp12 *a) { fp12_mul(r, a, a); }
 
 /*
  * fp12_inv: a^{-1} using Fermat: a^{p^12 - 1 - 1} = a^{-1} mod (poly, p)
- * For BN128: the GT group has order q. We use the identity
+ * For BLS12-381: the GT group has order q. We use the identity
  *   a^{-1} = a^{q-2}  if a is in the subgroup of order q — but GT
  * elements from pairings live in the order-q subgroup, so
  *   a^{-1} = (conjugate) ... complex.
@@ -128,10 +111,12 @@ void fp12_sqr(Fp12 *r, const Fp12 *a) { fp12_mul(r, a, a); }
  */
 void fp12_inv(Fp12 *r, const Fp12 *a) {
     /* Exponentiation: a^{q-2} works for elements of order q (subgroup GT) */
-    static const uint32_t qminus2[8] = {
-        0xefffffffu - 1, 0x43e1f593, 0x79b97091, 0x2833e848,
-        0x8181585d, 0xb85045b6, 0xe131a029, 0x30644e72};
-    fp12_exp(r, a, qminus2, 254);
+    /* BLS12-381 scalar order q-2 (255 bits):
+     * q   = 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001
+     * q-2 = 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfefffffffeffffffff
+     */
+    /* q - 2 from header (single source of truth) */
+    fp12_exp(r, a, BLS_Q_MINUS_2_FQ, 255);
 }
 
 /*
@@ -158,14 +143,14 @@ void fp12_exp(Fp12 *r, const Fp12 *base, const uint32_t k[8], int nbits) {
 
 /* Serialise: 12 × 32 bytes, each coefficient big-endian.
  * Layout: [coeff[0], coeff[1], ..., coeff[11]] — matches py_ecc flat12() exactly. */
-void fp12_to_bytes(uint8_t out[384], const Fp12 *a) {
+void fp12_to_bytes(uint8_t out[576], const Fp12 *a) {
     const Fp12Flat *fa = fp12_flat_c(a);
     for (int i = 0; i < 12; i++)
-        fp_to_bytes(out + i*32, (*fa)[i]);
+        fp_to_bytes(out + i*48, (*fa)[i]);
 }
 
-void fp12_from_bytes(Fp12 *r, const uint8_t in[384]) {
+void fp12_from_bytes(Fp12 *r, const uint8_t in[576]) {
     Fp12Flat *fr = fp12_flat(r);
     for (int i = 0; i < 12; i++)
-        fp_from_bytes((*fr)[i], in + i*32);
+        fp_from_bytes((*fr)[i], in + i*48);
 }

@@ -81,11 +81,5 @@ static const uint32_t BN128_GT10[8] = {0x81754cdb,0xf16c96d0,0x2bceeb55,0xce0394
 static const uint32_t BN128_GT11[8] = {0x3157aa84,0xd34bab37,0xfd0d8598,0x3511ed44,0xc2ced972,0x67e42a0b,0xfd20c55b,0x2b8f1d5d};
 
 /* AmorE protocol security parameters */
-
-/* ---- q - 2 for Fermat inversion in Fq (added during BN254/BLS12-381 unification) ---- */
-static const uint32_t BN128_Q_MINUS_2_FQ[8] = {
-    0xefffffff,0x43e1f593,0x79b97091,0x2833e848,
-    0x8181585d,0xb85045b6,0xe131a029,0x30644e72 };
-
 #define AMORE_PHI    90u   /* short scalar bits (efficiency parameter) */
 #define AMORE_SIGMA  40u   /* statistical security bits              */

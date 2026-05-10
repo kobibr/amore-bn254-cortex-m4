@@ -6,7 +6,7 @@
 # These are large external libraries that the user must install separately
 # (see INSTALLATION.md). They are referenced via symlinks during local
 # development.
-STM32CubeF4
+# STM32CubeF4  # commented when promoted from symlink to submodule
 relic_install
 relic_build
 relic/

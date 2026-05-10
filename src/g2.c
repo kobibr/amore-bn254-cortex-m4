@@ -1,5 +1,5 @@
+#include "curve.h"
 #include "g2.h"
-#include "bls12_381_const.h"
 #include <string.h>
 
 void g2_inf(G2Point *r) {
@@ -8,8 +8,8 @@ void g2_inf(G2Point *r) {
 int g2_is_inf(const G2Point *p) { return fp2_is_zero(&p->Z); }
 
 void g2_generator(G2Point *r) {
-    memcpy(r->X.c0, BLS_G2X0, 48); memcpy(r->X.c1, BLS_G2X1, 48);
-    memcpy(r->Y.c0, BLS_G2Y0, 48); memcpy(r->Y.c1, BLS_G2Y1, 48);
+    memcpy(r->X.c0, CURVE_G2X0, 48); memcpy(r->X.c1, CURVE_G2X1, 48);
+    memcpy(r->Y.c0, CURVE_G2Y0, 48); memcpy(r->Y.c1, CURVE_G2Y1, 48);
     fp2_one(&r->Z);
 }
 

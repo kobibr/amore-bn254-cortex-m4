@@ -1,4 +1,5 @@
 #pragma once
+#include "curve.h"
 #include <stdint.h>
 #include "bls12_381_const.h"
 
@@ -6,7 +7,6 @@
  * Stored in Montgomery form:  stored_value = real_value * R mod p
  * where R = 2^384.  12 × uint32_t little-endian limbs. */
 
-#define FP_LIMBS BLS_FP_LIMBS  /* 12 */
 
 typedef uint32_t Fp[FP_LIMBS];
 

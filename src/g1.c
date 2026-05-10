@@ -1,5 +1,5 @@
+#include "curve.h"
 #include "g1.h"
-#include "bls12_381_const.h"
 #include <string.h>
 
 /* b = 4 in Montgomery form */
@@ -10,8 +10,8 @@ void g1_inf(G1Point *r) {
 int g1_is_inf(const G1Point *p) { return fp_is_zero(p->Z); }
 
 void g1_generator(G1Point *r) {
-    memcpy(r->X, BLS_G1X, 48);
-    memcpy(r->Y, BLS_G1Y, 48);
+    memcpy(r->X, CURVE_G1X, 48);
+    memcpy(r->Y, CURVE_G1Y, 48);
     fp_one(r->Z);
 }
 

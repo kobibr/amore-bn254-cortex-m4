@@ -1,5 +1,5 @@
+#include "curve.h"
 #include "fq.h"
-#include "bls12_381_const.h"
 #include <string.h>
 
 static int fq_cmp(const uint32_t a[8], const uint32_t b[8]) {
@@ -27,8 +27,8 @@ static void fq_raw_add_mod(uint32_t r[8], const uint32_t a[8], const uint32_t b[
         r[i]  = (uint32_t)x;
         carry = x >> 32;
     }
-    if (carry || fq_cmp(r, BLS_Q_FQ) >= 0)
-        fq_raw_sub(r, r, BLS_Q_FQ);
+    if (carry || fq_cmp(r, CURVE_Q_FQ) >= 0)
+        fq_raw_sub(r, r, CURVE_Q_FQ);
 }
 
 static void cios_fq(uint32_t r[8], const uint32_t a[8], const uint32_t b[8]) {
@@ -42,10 +42,10 @@ static void cios_fq(uint32_t r[8], const uint32_t a[8], const uint32_t b[8]) {
         }
         T[8] += carry;
 
-        uint32_t k = (uint32_t)T[0] * BLS_N0P_FQ;
+        uint32_t k = (uint32_t)T[0] * CURVE_N0P_FQ;
         carry = 0;
         for (int j = 0; j < 8; j++) {
-            uint64_t x = T[j] + (uint64_t)BLS_Q_FQ[j] * k + carry;
+            uint64_t x = T[j] + (uint64_t)CURVE_Q_FQ[j] * k + carry;
             T[j]  = x & 0xFFFFFFFFu;
             carry = x >> 32;
         }
@@ -56,7 +56,7 @@ static void cios_fq(uint32_t r[8], const uint32_t a[8], const uint32_t b[8]) {
     }
     uint32_t tmp[8]; uint64_t borrow = 0;
     for (int i = 0; i < 8; i++) {
-        uint64_t x = (uint64_t)T[i] - BLS_Q_FQ[i] - borrow;
+        uint64_t x = (uint64_t)T[i] - CURVE_Q_FQ[i] - borrow;
         tmp[i]  = (uint32_t)x;
         borrow  = (x >> 63) & 1;
     }
@@ -69,7 +69,7 @@ static void cios_fq(uint32_t r[8], const uint32_t a[8], const uint32_t b[8]) {
 
 void fq_zero(Fq r) { memset(r, 0, 32); }
 
-void fq_one(Fq r)  { memcpy(r, BLS_R_FQ, 32); }
+void fq_one(Fq r)  { memcpy(r, CURVE_R_FQ, 32); }
 
 void fq_copy(Fq r, const Fq a) { memcpy(r, a, 32); }
 
@@ -87,7 +87,7 @@ void fq_sub(Fq r, const Fq a, const Fq b) {
     if (fq_cmp(a, b) < 0) {
         uint32_t tmp[8];
         fq_raw_sub(tmp, b, a);
-        fq_raw_sub(r, BLS_Q_FQ, tmp);
+        fq_raw_sub(r, CURVE_Q_FQ, tmp);
     } else {
         fq_raw_sub(r, a, b);
     }
@@ -95,7 +95,7 @@ void fq_sub(Fq r, const Fq a, const Fq b) {
 
 void fq_neg(Fq r, const Fq a) {
     if (fq_is_zero(a)) { fq_zero(r); return; }
-    fq_raw_sub(r, BLS_Q_FQ, a);
+    fq_raw_sub(r, CURVE_Q_FQ, a);
 }
 
 /* Inversion using Fermat: a^{q-2} */
@@ -105,7 +105,7 @@ void fq_inv(Fq r, const Fq a) {
     fq_copy(base, a);
     fq_one(result);
     for (int w = 0; w < 8; w++) {
-        uint32_t limb = BLS_Q_MINUS_2_FQ[w];
+        uint32_t limb = CURVE_Q_MINUS_2_FQ[w];
         for (int b = 0; b < 32; b++) {
             if (limb & 1u) cios_fq(result, result, base);
             cios_fq(base, base, base);
@@ -117,7 +117,7 @@ void fq_inv(Fq r, const Fq a) {
 
 /* raw uint32_t[8] plain → Montgomery */
 void fq_from_limbs(Fq r, const uint32_t limbs[8]) {
-    cios_fq(r, limbs, BLS_R2_FQ);
+    cios_fq(r, limbs, CURVE_R2_FQ);
 }
 
 void fq_from_bytes(Fq r, const uint8_t in[32]) {

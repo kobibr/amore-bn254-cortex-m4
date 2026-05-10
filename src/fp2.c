@@ -1,3 +1,4 @@
+#include "curve.h"
 #include "fp2.h"
 #include <string.h>
 

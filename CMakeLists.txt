@@ -15,6 +15,32 @@ project(amorebn128 C ASM)
 set(CMAKE_C_STANDARD 11)
 
 # =============================================================================
+#  Curve selection — BN254 or BLS12_381
+# =============================================================================
+set(CURVE "BLS12_381" CACHE STRING "Pairing curve: BN254 or BLS12_381")
+set_property(CACHE CURVE PROPERTY STRINGS "BN254" "BLS12_381")
+
+if(CURVE STREQUAL "BN254")
+    set(CURVE_DEFINE "CURVE_BN254")
+    set(CURVE_SUFFIX "bn254")
+elseif(CURVE STREQUAL "BLS12_381")
+    set(CURVE_DEFINE "CURVE_BLS12_381")
+    set(CURVE_SUFFIX "bls12_381")
+else()
+    message(FATAL_ERROR "CURVE must be BN254 or BLS12_381 (got: ${CURVE})")
+endif()
+
+message(STATUS "Building AmorE for curve: ${CURVE}")
+
+# Apply the curve definition to ALL targets via add_compile_definitions.
+# (Cleaner than per-target target_compile_definitions when we have multiple
+#  executables that all use the same curve.)
+add_compile_definitions(${CURVE_DEFINE})
+
+set(AMORE_TARGET "amore_${CURVE_SUFFIX}")
+
+
+# =============================================================================
 #  Paths — STM32 Cube and RELIC
 # =============================================================================
 if(NOT DEFINED CUBE_ROOT)
@@ -113,13 +139,13 @@ set(CMAKE_EXE_LINKER_FLAGS
 # =============================================================================
 #  Target 1: AmorE (existing)
 # =============================================================================
-add_executable(amorebn128.elf ${AMORE_SRCS} ${HAL_SRCS})
-target_include_directories(amorebn128.elf PRIVATE ${COMMON_INCLUDES})
+add_executable(${AMORE_TARGET}.elf ${AMORE_SRCS} ${HAL_SRCS})
+target_include_directories(${AMORE_TARGET}.elf PRIVATE ${COMMON_INCLUDES})
 
-add_custom_command(TARGET amorebn128.elf POST_BUILD
-    COMMAND ${CMAKE_OBJCOPY} -O ihex   $<TARGET_FILE:amorebn128.elf> amorebn128.hex
-    COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:amorebn128.elf> amorebn128.bin
-    COMMAND ${CMAKE_SIZE}              $<TARGET_FILE:amorebn128.elf>
+add_custom_command(TARGET ${AMORE_TARGET}.elf POST_BUILD
+    COMMAND ${CMAKE_OBJCOPY} -O ihex   $<TARGET_FILE:${AMORE_TARGET}.elf> ${AMORE_TARGET}.hex
+    COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${AMORE_TARGET}.elf> ${AMORE_TARGET}.bin
+    COMMAND ${CMAKE_SIZE}              $<TARGET_FILE:${AMORE_TARGET}.elf>
     COMMENT "AmorE: generating HEX and BIN"
 )
 
@@ -184,10 +210,10 @@ find_program(ST_FLASH st-flash)
 if(ST_FLASH)
     # Original AmorE flash target
     add_custom_target(flash
-        COMMAND ${ST_FLASH} --reset write amorebn128.bin 0x08000000
-        DEPENDS amorebn128.elf
+        COMMAND ${ST_FLASH} --reset write ${AMORE_TARGET}.bin 0x08000000
+        DEPENDS ${AMORE_TARGET}.elf
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-        COMMENT "Flashing amorebn128.bin to STM32..."
+        COMMENT "Flashing ${AMORE_TARGET}.bin to STM32..."
     )
 
     # Flash the RELIC bench

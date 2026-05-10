@@ -22,10 +22,9 @@ BAUD="${BAUD:-921600}"
 STLINK_SN="${STLINK_SN:-}"
 RPI_USER="${RPI_USER:-pi}"
 RPI_PORT="${RPI_PORT:-/dev/ttyAMA0}"
-BUILD_DIR_BASE="build"
+BUILD_DIR="build"
 LOG_DIR="logs"
 FLASH=true
-CURVE="${CURVE:-BLS12_381}"   # BN254 or BLS12_381
 
 # ── GDB selection: prefer gdb-multiarch, fall back to arm-none-eabi-gdb ────
 if command -v gdb-multiarch &>/dev/null; then
@@ -42,24 +41,8 @@ for arg in "$@"; do
         --baud=*)    BAUD="${arg#*=}" ;;
         --log-dir=*) LOG_DIR="${arg#*=}" ;;
         --no-flash)  FLASH=false ;;
-        --curve=*)   CURVE="${arg#*=}" ;;
     esac
 done
-
-# ── Derive curve-specific paths ──────────────────────────────────────────────
-case "${CURVE}" in
-    BN254)
-        CURVE_SUFFIX="bn254" ;;
-    BLS12_381)
-        CURVE_SUFFIX="bls12_381" ;;
-    *)
-        echo "Error: --curve must be BN254 or BLS12_381 (got: ${CURVE})" >&2
-        exit 1 ;;
-esac
-
-BUILD_DIR="${BUILD_DIR_BASE}/${CURVE_SUFFIX}"
-TARGET_NAME="amore_${CURVE_SUFFIX}"
-ELF="${BUILD_DIR}/${TARGET_NAME}.elf"
 
 STAMP="$(date +%Y%m%d_%H%M%S)"
 SERVER_LOG="${LOG_DIR}/server_${STAMP}.log"
@@ -111,7 +94,7 @@ mkdir -p "${LOG_DIR}"
 BUILD_LOG="${LOG_DIR}/build_${STAMP}.log"
 info "Build log: ${BUILD_LOG}"
 
-cmake -S . -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE=Release -DCURVE="${CURVE}" \
+cmake -S . -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE=Release \
     2>&1 | tee "${BUILD_LOG}" | tail -5
 
 if [[ "${PIPESTATUS[0]}" -ne 0 ]]; then
@@ -142,7 +125,7 @@ if $FLASH; then
         exit 1
     fi
 
-    FLASH_BIN="${SCRIPT_DIR}/${BUILD_DIR}/${TARGET_NAME}.bin"
+    FLASH_BIN="${SCRIPT_DIR}/${BUILD_DIR}/amorebn128.bin"
 
     info "Detaching cdc_acm so st-flash can access ST-Link..."
     sudo modprobe -r cdc_acm 2>/dev/null || true

@@ -1,10 +1,10 @@
+#include "curve.h"
 #include "fp.h"
-#include "bls12_381_const.h"
 #include <string.h>
 
 /* -----------------------------------------------------------------------
  * BLS12-381 Fp arithmetic, 12 × 32-bit Montgomery form.
- * Modulus is BLS_P (defined in bls12_381_const.h).
+ * Modulus is CURVE_P (defined in bls12_381_const.h).
  *
  * Phase A: fp_zero, fp_one, fp_copy, fp_eq, fp_is_zero,
  *          fp_add, fp_sub, fp_neg
@@ -47,8 +47,8 @@ static void fp_raw_add_mod(uint32_t r[FP_LIMBS],
         carry = x >> 32;
     }
     /* If carry OR result >= p, subtract p */
-    if (carry || fp_cmp(r, BLS_P) >= 0) {
-        fp_raw_sub(r, r, BLS_P);
+    if (carry || fp_cmp(r, CURVE_P) >= 0) {
+        fp_raw_sub(r, r, CURVE_P);
     }
 }
 
@@ -60,7 +60,7 @@ void fp_zero(Fp r) {
 
 void fp_one(Fp r) {
     /* Montgomery form of 1 is R mod p */
-    memcpy(r, BLS_R_FP, sizeof(Fp));
+    memcpy(r, CURVE_R_FP, sizeof(Fp));
 }
 
 void fp_copy(Fp r, const Fp a) {
@@ -91,7 +91,7 @@ void fp_sub(Fp r, const Fp a, const Fp b) {
         uint32_t tmp[FP_LIMBS];
         uint64_t carry = 0;
         for (int i = 0; i < FP_LIMBS; i++) {
-            uint64_t x = (uint64_t)a[i] + BLS_P[i] + carry;
+            uint64_t x = (uint64_t)a[i] + CURVE_P[i] + carry;
             tmp[i] = (uint32_t)x;
             carry  = x >> 32;
         }
@@ -103,7 +103,7 @@ void fp_neg(Fp r, const Fp a) {
     if (fp_is_zero(a)) {
         fp_zero(r);
     } else {
-        fp_raw_sub(r, BLS_P, a);
+        fp_raw_sub(r, CURVE_P, a);
     }
 }
 
@@ -145,10 +145,10 @@ void fp_mul(Fp r, const Fp a, const Fp b) {
          * Choose k such that adding k * p zeros out T[0]:
          *   k = T[0] * (-p^{-1}) mod 2^32 = T[0] * N0_P mod 2^32
          */
-        uint32_t k = (uint32_t)T[0] * BLS_N0P_FP;
+        uint32_t k = (uint32_t)T[0] * CURVE_N0P_FP;
         carry = 0;
         for (int j = 0; j < FP_LIMBS; j++) {
-            uint64_t x = T[j] + (uint64_t)BLS_P[j] * k + carry;
+            uint64_t x = T[j] + (uint64_t)CURVE_P[j] * k + carry;
             T[j]  = x & 0xFFFFFFFFu;
             carry = x >> 32;
         }
@@ -172,8 +172,8 @@ void fp_mul(Fp r, const Fp a, const Fp b) {
 
     /* If T[FP_LIMBS] != 0, definitely >= p (since p fits in FP_LIMBS words).
      * Otherwise check result vs p. */
-    if (T[FP_LIMBS] != 0 || fp_cmp(result, BLS_P) >= 0) {
-        fp_raw_sub(r, result, BLS_P);
+    if (T[FP_LIMBS] != 0 || fp_cmp(result, CURVE_P) >= 0) {
+        fp_raw_sub(r, result, CURVE_P);
     } else {
         memcpy(r, result, sizeof(Fp));
     }
@@ -192,7 +192,7 @@ void fp_sqr(Fp r, const Fp a) {
  *   fp_mul(a_plain, R^2) = a_plain * R^2 * R^{-1} = a_plain * R = (a_plain)_mont
  */
 void fp_to_mont(Fp r, const Fp a_plain) {
-    fp_mul(r, a_plain, BLS_R2_FP);
+    fp_mul(r, a_plain, CURVE_R2_FP);
 }
 
 /* Convert from Montgomery form: r = a_mont * R^{-1} = a_plain.
@@ -224,8 +224,8 @@ void fp_from_u32(Fp r, uint32_t x) {
  *
  * We scan p-2 from MSB to LSB. p has 381 bits, so p-2 also has 381 bits.
  *
- * Note: BLS_P stored as 12 little-endian limbs; p-2 = BLS_P with limb[0] -= 2.
- * Since BLS_P[0] = 0xffffaaab > 2, no borrow.
+ * Note: CURVE_P stored as 12 little-endian limbs; p-2 = CURVE_P with limb[0] -= 2.
+ * Since CURVE_P[0] = 0xffffaaab > 2, no borrow.
  */
 void fp_inv(Fp r, const Fp a) {
     if (fp_is_zero(a)) {
@@ -236,8 +236,8 @@ void fp_inv(Fp r, const Fp a) {
 
     /* Compute exponent p - 2 as 12-limb little-endian array */
     uint32_t exp[FP_LIMBS];
-    memcpy(exp, BLS_P, sizeof(exp));
-    /* exp -= 2 (BLS_P[0] = 0xffffaaab > 2, so no borrow) */
+    memcpy(exp, CURVE_P, sizeof(exp));
+    /* exp -= 2 (CURVE_P[0] = 0xffffaaab > 2, so no borrow) */
     exp[0] -= 2;
 
     /* Square-and-multiply, MSB-first */

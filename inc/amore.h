@@ -1,5 +1,6 @@
 #pragma once
 #include "g1.h"
+#include "curve.h"
 #include "g2.h"
 #include "fp12.h"
 #include "fq.h"
@@ -53,15 +54,15 @@ typedef struct {
 } AmorE_Sec;
 
 typedef struct {
-    uint8_t A[96];   /* G1 element: 48 bytes per coord (BLS12-381) */
-    uint8_t B[192];  /* G2 element: 96 bytes per Fp2 coord         */
-    uint8_t C[96];
-    uint8_t D[192];
+    uint8_t A[G1_BYTES];   /* G1 element: 48 bytes per coord (BLS12-381) */
+    uint8_t B[G2_BYTES];  /* G2 element: 96 bytes per Fp2 coord         */
+    uint8_t C[G1_BYTES];
+    uint8_t D[G2_BYTES];
 } AmorE_Pub;
 
 typedef struct {
-    uint8_t gamma[576];  /* Fp12 element: 48 bytes per coefficient × 12 */
-    uint8_t rho[576];
+    uint8_t gamma[FP12_BYTES];  /* Fp12 element: 48 bytes per coefficient × 12 */
+    uint8_t rho[FP12_BYTES];
 } AmorE_Out;
 
 /* -----------------------------------------------------------------------
@@ -137,7 +138,7 @@ typedef struct {
 void AmorE_OneTimeSetup(AmorE_SK *sk, uint32_t phi, uint32_t tau_ms);
 
 void AmorE_Setup(const AmorE_SK *sk,
-                 const uint8_t A[96], const uint8_t B[192],
+                 const uint8_t A[G1_BYTES], const uint8_t B[G2_BYTES],
                  AmorE_Pub *pub, AmorE_Sec *sec);
 
 int  AmorE_Verify(const AmorE_SK *sk, const AmorE_Sec *sec, const AmorE_Out *out);

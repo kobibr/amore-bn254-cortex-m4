@@ -2,7 +2,7 @@
 """
 AmorE BLS12-381 — Python server with full telemetry
 ================================================
-Runs on the laptop.  Communicates with STM32 via /dev/ttyACM0 (ST-Link VCP).
+Runs on Raspberry Pi 3B.  Communicates with STM32 via /dev/ttyAMA0 (GPIO 14/15).
 
 Packet format (matches amore_uart.h):
   [0xAA][0x55][CMD:1][LEN_LO:1][LEN_HI:1][DATA:LEN][CRC8:1]
@@ -132,6 +132,12 @@ def recv_packet(port: serial.Serial, timeout_s: float = 30.0) -> tuple[int, byte
             state = 1
         elif state == 1 and b[0] == 0x55:
             break
+        elif state == 1 and b[0] == 0xAA:
+            # Stay in state=1 — this 0xAA could be the real start
+            pass
+        elif b[0] == 0xAA:
+            # Recovery: start tracking from this 0xAA
+            state = 1
         else:
             state = 0
     else:
@@ -298,7 +304,7 @@ def run_server(port_name: str, baud: int, honest_rounds: int, log_dir: str) -> S
             log(info(f"Compute done in {rt.compute_ms:.1f} ms"))
 
             result_bytes = fp12_to_bytes(gamma) + fp12_to_bytes(rho)
-            assert len(result_bytes) == 768, "BUG: result must be 768 bytes"
+            assert len(result_bytes) == 1152, "BUG: result must be 768 bytes"
 
             rt.pkt_send_ok = send_packet(port, CMD_RESULT, result_bytes)
             rt.t_sent_result = time.time()

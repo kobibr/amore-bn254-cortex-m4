@@ -23,9 +23,11 @@ set_property(CACHE CURVE PROPERTY STRINGS "BN254" "BLS12_381")
 if(CURVE STREQUAL "BN254")
     set(CURVE_DEFINE "CURVE_BN254")
     set(CURVE_SUFFIX "bn254")
+    set(FP_LIMBS_VAL 8)
 elseif(CURVE STREQUAL "BLS12_381")
     set(CURVE_DEFINE "CURVE_BLS12_381")
     set(CURVE_SUFFIX "bls12_381")
+    set(FP_LIMBS_VAL 12)
 else()
     message(FATAL_ERROR "CURVE must be BN254 or BLS12_381 (got: ${CURVE})")
 endif()
@@ -35,7 +37,7 @@ message(STATUS "Building AmorE for curve: ${CURVE}")
 # Apply the curve definition to ALL targets via add_compile_definitions.
 # (Cleaner than per-target target_compile_definitions when we have multiple
 #  executables that all use the same curve.)
-add_compile_definitions(${CURVE_DEFINE})
+add_compile_definitions(${CURVE_DEFINE} FP_LIMBS=${FP_LIMBS_VAL})
 
 set(AMORE_TARGET "amore_${CURVE_SUFFIX}")
 

@@ -289,7 +289,11 @@ void AmorE_RunBenchmark(AmorE_BenchResults *res) {
             phase_set(PHASE_BENCH_SETUP, bi, (uint16_t)rnd, 0);
             t0 = cyc();
             AmorE_Setup(&sk, G1GEN_BYTES, g_g2gen_bytes, &pub, &sec);
-            res->blind_total_cycles[bi] += cyc() - t0;
+            uint32_t blind_cyc_this_round = cyc() - t0;
+            res->blind_total_cycles[bi] += blind_cyc_this_round;
+            if (N == 50 && rnd < 50) {
+                res->per_round_blind_n50[rnd] = blind_cyc_this_round;
+            }
 
             /* Send */
             phase_set(PHASE_BENCH_SEND, bi, (uint16_t)rnd, 0);
@@ -335,7 +339,11 @@ void AmorE_RunBenchmark(AmorE_BenchResults *res) {
             memcpy(out_val.rho, uart_buf + FP12_BYTES, FP12_BYTES);
             t0 = cyc();
             int ok = AmorE_Verify(&sk, &sec, &out_val);
-            res->verify_total_cycles[bi] += cyc() - t0;
+            uint32_t verify_cyc_this_round = cyc() - t0;
+            res->verify_total_cycles[bi] += verify_cyc_this_round;
+            if (N == 50 && rnd < 50) {
+                res->per_round_verify_n50[rnd] = verify_cyc_this_round;
+            }
 
             if (ok) {
                 res->rounds_verify_ok[bi]++;
@@ -357,8 +365,15 @@ void AmorE_RunBenchmark(AmorE_BenchResults *res) {
             }
         }
 
-        res->amort_cycles[bi] =
-            (res->blind_total_cycles[bi] + res->verify_total_cycles[bi]) / N;
+        /* CRITICAL: cast to uint64_t before adding to avoid uint32 overflow.
+         * In BLS12_381 N=50, total can exceed 2^32 cycles (~25.6 sec wall). */
+        uint64_t total_cyc = res->blind_total_cycles[bi] +
+                             res->verify_total_cycles[bi];
+        if (total_cyc < res->blind_total_cycles[bi]) {
+            /* defensive: this should never trigger now that fields are uint64 */
+            res->overflow_detected = 1;
+        }
+        res->amort_cycles[bi] = (uint32_t)(total_cyc / N);
     }
 
     /* --- Security check: one malicious round --- */

@@ -18,7 +18,9 @@
 
 #if defined(CURVE_BN254)
 #  define CURVE_NAME    "BN254"
-#  define FP_LIMBS      8
+#  ifndef FP_LIMBS
+#    define FP_LIMBS  8
+#  endif
 #  define FP_BITS       254
 #  define FP_BYTES      32
 #  define SCALAR_BITS   254
@@ -54,7 +56,9 @@
 #  define CURVE_GT11  BN128_GT11
 #elif defined(CURVE_BLS12_381)
 #  define CURVE_NAME    "BLS12-381"
-#  define FP_LIMBS      12
+#  ifndef FP_LIMBS
+#    define FP_LIMBS  12
+#  endif
 #  define FP_BITS       381
 #  define FP_BYTES      48
 #  define SCALAR_BITS   255

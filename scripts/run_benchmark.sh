@@ -335,22 +335,22 @@ printf "\\n"
 
 printf "[Batch N=1]\\n"
 printf "  sent/recv_ok/verify_ok/verify_fail/uart_err = %u %u %u %u %u\\n", g_results.rounds_sent[0], g_results.rounds_recv_ok[0], g_results.rounds_verify_ok[0], g_results.rounds_verify_fail[0], g_results.rounds_uart_err[0]
-printf "  blind_total  = %u cycles  (%.1f ms)\\n", g_results.blind_total_cycles[0], (float)g_results.blind_total_cycles[0] / 168000.0
-printf "  verify_total = %u cycles  (%.1f ms)\\n", g_results.verify_total_cycles[0], (float)g_results.verify_total_cycles[0] / 168000.0
+printf "  blind_total  = %llu cycles  (%.1f ms)\\n", g_results.blind_total_cycles[0], (double)g_results.blind_total_cycles[0] / 168000.0
+printf "  verify_total = %llu cycles  (%.1f ms)\\n", g_results.verify_total_cycles[0], (double)g_results.verify_total_cycles[0] / 168000.0
 printf "  amort/round  = %u cycles  (%.1f ms)\\n", g_results.amort_cycles[0], (float)g_results.amort_cycles[0] / 168000.0
 printf "\\n"
 
 printf "[Batch N=10]\\n"
 printf "  sent/recv_ok/verify_ok/verify_fail/uart_err = %u %u %u %u %u\\n", g_results.rounds_sent[1], g_results.rounds_recv_ok[1], g_results.rounds_verify_ok[1], g_results.rounds_verify_fail[1], g_results.rounds_uart_err[1]
-printf "  blind_total  = %u cycles  (%.1f ms)\\n", g_results.blind_total_cycles[1], (float)g_results.blind_total_cycles[1] / 168000.0
-printf "  verify_total = %u cycles  (%.1f ms)\\n", g_results.verify_total_cycles[1], (float)g_results.verify_total_cycles[1] / 168000.0
+printf "  blind_total  = %llu cycles  (%.1f ms)\\n", g_results.blind_total_cycles[1], (double)g_results.blind_total_cycles[1] / 168000.0
+printf "  verify_total = %llu cycles  (%.1f ms)\\n", g_results.verify_total_cycles[1], (double)g_results.verify_total_cycles[1] / 168000.0
 printf "  amort/round  = %u cycles  (%.1f ms)\\n", g_results.amort_cycles[1], (float)g_results.amort_cycles[1] / 168000.0
 printf "\\n"
 
 printf "[Batch N=50]\\n"
 printf "  sent/recv_ok/verify_ok/verify_fail/uart_err = %u %u %u %u %u\\n", g_results.rounds_sent[2], g_results.rounds_recv_ok[2], g_results.rounds_verify_ok[2], g_results.rounds_verify_fail[2], g_results.rounds_uart_err[2]
-printf "  blind_total  = %u cycles  (%.1f ms)\\n", g_results.blind_total_cycles[2], (float)g_results.blind_total_cycles[2] / 168000.0
-printf "  verify_total = %u cycles  (%.1f ms)\\n", g_results.verify_total_cycles[2], (float)g_results.verify_total_cycles[2] / 168000.0
+printf "  blind_total  = %llu cycles  (%.1f ms)\\n", g_results.blind_total_cycles[2], (double)g_results.blind_total_cycles[2] / 168000.0
+printf "  verify_total = %llu cycles  (%.1f ms)\\n", g_results.verify_total_cycles[2], (double)g_results.verify_total_cycles[2] / 168000.0
 printf "  amort/round  = %u cycles  (%.1f ms)\\n", g_results.amort_cycles[2], (float)g_results.amort_cycles[2] / 168000.0
 printf "\\n"
 
@@ -359,6 +359,23 @@ printf "  sec_sent           = %u\\n", g_results.sec_sent
 printf "  sec_recv_ok        = %u\\n", g_results.sec_recv_ok
 printf "  sec_verify_result  = %u  (0=rejected(good), 1=accepted(bug), 2=no-resp)\\n", g_results.sec_verify_result
 printf "  security_ok        = %u  (1 = malicious server caught)\\n", g_results.security_ok
+printf "\\n"
+
+printf "\\n"
+printf "[Per-round N=50] (extended telemetry — overflow debug)\\n"
+set \$i = 0
+while \$i < 50
+  printf "  round %2u: blind = %10llu cyc (%6.1f ms)   verify = %10llu cyc (%6.1f ms)\\n", \
+    \$i, g_results.per_round_blind_n50[\$i], (double)g_results.per_round_blind_n50[\$i] / 168000.0, \
+    g_results.per_round_verify_n50[\$i], (double)g_results.per_round_verify_n50[\$i] / 168000.0
+  set \$i = \$i + 1
+end
+printf "\\n"
+
+printf "[Overflow detection]\\n"
+printf "  overflow_detected = %u  (0 = no overflow during aggregation, 1 = overflow occurred)\\n", g_results.overflow_detected
+printf "  blind_total[2]  raw uint64 = %llu  (low32: %u, high32: %u)\\n", g_results.blind_total_cycles[2], (unsigned int)(g_results.blind_total_cycles[2] & 0xFFFFFFFFu), (unsigned int)(g_results.blind_total_cycles[2] >> 32)
+printf "  verify_total[2] raw uint64 = %llu  (low32: %u, high32: %u)\\n", g_results.verify_total_cycles[2], (unsigned int)(g_results.verify_total_cycles[2] & 0xFFFFFFFFu), (unsigned int)(g_results.verify_total_cycles[2] >> 32)
 printf "\\n"
 
 printf "[Totals]\\n"

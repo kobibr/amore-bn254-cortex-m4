@@ -103,9 +103,13 @@ typedef struct {
 
     /* Per-batch telemetry (index 0=N1, 1=N10, 2=N50) */
     uint32_t N_vals[BENCH_N_COUNT];
-    uint32_t blind_total_cycles[BENCH_N_COUNT];
-    uint32_t verify_total_cycles[BENCH_N_COUNT];
+    uint64_t blind_total_cycles[BENCH_N_COUNT];   /* uint64 to prevent overflow at large N */
+    uint64_t verify_total_cycles[BENCH_N_COUNT]; /* uint64 to prevent overflow at large N */
     uint32_t amort_cycles[BENCH_N_COUNT];
+    /* Extended telemetry for overflow debugging */
+    uint64_t per_round_blind_n50[50];   /* per-round cycles ב-N=50, blind */
+    uint64_t per_round_verify_n50[50];  /* per-round cycles ב-N=50, verify */
+    uint32_t overflow_detected;          /* 1 if any aggregation hit uint32 overflow */
     uint32_t rounds_sent[BENCH_N_COUNT];
     uint32_t rounds_recv_ok[BENCH_N_COUNT];
     uint32_t rounds_verify_ok[BENCH_N_COUNT];

@@ -109,6 +109,8 @@ set(HAL_SRCS
     ${HAL_PATH}/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash_ex.c
     ${HAL_PATH}/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pwr.c
     ${HAL_PATH}/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pwr_ex.c
+    ${HAL_PATH}/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_rtc.c
+    ${HAL_PATH}/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_rtc_ex.c
 )
 
 # --- RELIC benchmark app sources ---
@@ -230,6 +232,69 @@ else()
 endif()
 
 # =============================================================================
+#  Target 4: Stop-mode test (Pre-PPK2 Mock Day 4)
+#
+#  Enters Stop mode, wakes every 5s for ~30s total (6 cycles). Toggles PA0
+#  on each transition and uses LED to indicate state visually.
+#  No UART, no RELIC, no AmorE protocol.
+# =============================================================================
+set(STOP_TEST_SRCS
+    src/stop_main.c
+    src/lowpower.c
+    src/startup_stm32f407xx.c
+    ${CUBE_ROOT}/Drivers/CMSIS/Device/ST/STM32F4xx/Source/Templates/system_stm32f4xx.c
+)
+
+add_executable(stop_test.elf ${STOP_TEST_SRCS} ${HAL_SRCS})
+target_include_directories(stop_test.elf PRIVATE ${COMMON_INCLUDES})
+
+add_custom_command(TARGET stop_test.elf POST_BUILD
+    COMMAND ${CMAKE_OBJCOPY} -O ihex   $<TARGET_FILE:stop_test.elf> stop_test.hex
+    COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:stop_test.elf> stop_test.bin
+    COMMAND ${CMAKE_SIZE}              $<TARGET_FILE:stop_test.elf>
+    COMMENT "stop_test: generating HEX and BIN"
+)
+
+# =============================================================================
+#  Target 5: Wake-up burst (Pre-PPK2 Mock Day 4)
+#
+#  100 consecutive Stop→Run cycles with RTC wakeup ~10 ms each.
+#  Toggles PA0 high during Run, low during Stop. Total runtime ~1s.
+# =============================================================================
+set(STOP_TEST_NOSTOP_SRCS
+    src/stop_test_nostop_main.c
+    src/startup_stm32f407xx.c
+    ${CUBE_ROOT}/Drivers/CMSIS/Device/ST/STM32F4xx/Source/Templates/system_stm32f4xx.c
+)
+
+add_executable(stop_test_nostop.elf ${STOP_TEST_NOSTOP_SRCS} ${HAL_SRCS})
+target_include_directories(stop_test_nostop.elf PRIVATE ${COMMON_INCLUDES})
+
+add_custom_command(TARGET stop_test_nostop.elf POST_BUILD
+    COMMAND ${CMAKE_OBJCOPY} -O ihex   $<TARGET_FILE:stop_test_nostop.elf> stop_test_nostop.hex
+    COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:stop_test_nostop.elf> stop_test_nostop.bin
+    COMMAND ${CMAKE_SIZE}              $<TARGET_FILE:stop_test_nostop.elf>
+    COMMENT "stop_test_nostop: generating HEX and BIN"
+)
+
+set(WAKEUP_BURST_SRCS
+    src/wakeup_burst_main.c
+    src/lowpower.c
+    src/startup_stm32f407xx.c
+    ${CUBE_ROOT}/Drivers/CMSIS/Device/ST/STM32F4xx/Source/Templates/system_stm32f4xx.c
+)
+
+add_executable(wakeup_burst.elf ${WAKEUP_BURST_SRCS} ${HAL_SRCS})
+target_include_directories(wakeup_burst.elf PRIVATE ${COMMON_INCLUDES})
+
+add_custom_command(TARGET wakeup_burst.elf POST_BUILD
+    COMMAND ${CMAKE_OBJCOPY} -O ihex   $<TARGET_FILE:wakeup_burst.elf> wakeup_burst.hex
+    COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:wakeup_burst.elf> wakeup_burst.bin
+    COMMAND ${CMAKE_SIZE}              $<TARGET_FILE:wakeup_burst.elf>
+    COMMENT "wakeup_burst: generating HEX and BIN"
+)
+
+# =============================================================================
 #  Flash targets
 # =============================================================================
 find_program(ST_FLASH st-flash)
@@ -240,6 +305,20 @@ if(ST_FLASH)
         DEPENDS ${AMORE_TARGET}.elf
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         COMMENT "Flashing ${AMORE_TARGET}.bin to STM32..."
+    )
+
+    add_custom_target(flash_stop_test
+        COMMAND ${ST_FLASH} --reset write stop_test.bin 0x08000000
+        DEPENDS stop_test.elf
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMENT "Flashing stop_test.bin to STM32..."
+    )
+
+    add_custom_target(flash_wakeup_burst
+        COMMAND ${ST_FLASH} --reset write wakeup_burst.bin 0x08000000
+        DEPENDS wakeup_burst.elf
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMENT "Flashing wakeup_burst.bin to STM32..."
     )
 
     # Flash the RELIC bench

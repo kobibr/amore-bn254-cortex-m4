@@ -11,6 +11,7 @@
  * ========================================================================= */
 
 #include "pairing_bench.h"
+#include "triggers.h"
 #include "stm32f4xx_hal.h"
 
 #include <relic.h>
@@ -138,9 +139,11 @@ int PairingBench_Run(PairingBenchResults *res) {
         /* ---- Pairing loop ---- */
         for (uint32_t i = 0; i < PB_N_ITER; i++) {
             PB_LogPhase(res, PB_PHASE_PAIRING, (uint8_t)i, 0);
+            TRIG_COMPUTE_HI();
             uint32_t p0 = CYCLE_COUNT();
             pp_map_oatep_k12(r, P, Q);
             uint32_t cycles = CYCLE_COUNT() - p0;
+            TRIG_COMPUTE_LO();
 
             res->pairing_cycles[i] = cycles;
 

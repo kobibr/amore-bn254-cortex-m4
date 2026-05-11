@@ -43,7 +43,9 @@ typedef struct {
 
 #define PB_MAGIC       0xB0CCAA00u
 #define PB_FW_VER      0x00010000u
-#define PB_N_ITER      10u
+#ifndef PB_N_ITER
+#  define PB_N_ITER 10u
+#endif
 
 typedef struct {
     /* Identity */

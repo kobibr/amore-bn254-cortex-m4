@@ -1,6 +1,7 @@
 #include "curve.h"
 #include "amore.h"
 #include "amore_uart.h"
+#include "triggers.h"
 #include "stm32f4xx_hal.h"
 #include <string.h>
 
@@ -251,7 +252,8 @@ void AmorE_RunBenchmark(AmorE_BenchResults *res) {
         int rc = uart_recv_packet(&cmd, uart_buf, &len, sizeof(uart_buf), 30000);
         if (rc != 0) {
             error_set(ERR_UART_TIMEOUT, 0, 0);
-            res->status = 0xDEAD0001u;
+            TRIG_ALL_LO();
+        res->status = 0xDEAD0001u;
             return;
         }
         /* byte 0: 0=honest, 1=malicious (informational only) */
@@ -287,16 +289,19 @@ void AmorE_RunBenchmark(AmorE_BenchResults *res) {
 
             /* Setup (blind) */
             phase_set(PHASE_BENCH_SETUP, bi, (uint16_t)rnd, 0);
+            TRIG_COMPUTE_HI();
             t0 = cyc();
             AmorE_Setup(&sk, G1GEN_BYTES, g_g2gen_bytes, &pub, &sec);
             uint32_t blind_cyc_this_round = cyc() - t0;
             res->blind_total_cycles[bi] += blind_cyc_this_round;
+            TRIG_COMPUTE_LO();
             if (N == 50 && rnd < 50) {
                 res->per_round_blind_n50[rnd] = blind_cyc_this_round;
             }
 
             /* Send */
             phase_set(PHASE_BENCH_SEND, bi, (uint16_t)rnd, 0);
+            TRIG_WAIT_HI();
             pub_to_bytes(pkt, &pub);
             int rc = uart_send_packet(UART_CMD_SETUP, pkt, AMORE_PROTO_OUT_BYTES);
             res->rounds_sent[bi]++;
@@ -304,6 +309,7 @@ void AmorE_RunBenchmark(AmorE_BenchResults *res) {
             if (rc != 0) {
                 error_set(ERR_UART_SEND, bi, rnd);
                 res->rounds_uart_err[bi]++;
+                TRIG_ALL_LO();
                 res->status = 0xDEAD0010u | bi;
                 return;
             }
@@ -315,32 +321,38 @@ void AmorE_RunBenchmark(AmorE_BenchResults *res) {
             if (rc != 0) {
                 error_set(ERR_UART_TIMEOUT, bi, rnd);
                 res->rounds_uart_err[bi]++;
+                TRIG_ALL_LO();
                 res->status = 0xDEAD0020u | bi;
                 return;
             }
             if (cmd != UART_CMD_RESULT) {
                 error_set(ERR_UART_CMD, bi, rnd);
                 res->rounds_uart_err[bi]++;
+                TRIG_ALL_LO();
                 res->status = 0xDEAD0030u | bi;
                 return;
             }
             if (rlen != 1152) {
                 error_set(ERR_UART_LEN, bi, rnd);
                 res->rounds_uart_err[bi]++;
+                TRIG_ALL_LO();
                 res->status = 0xDEAD0040u | bi;
                 return;
             }
             res->rounds_recv_ok[bi]++;
+            TRIG_WAIT_LO();
 
             /* Verify */
             phase_set(PHASE_BENCH_VERIFY, bi, (uint16_t)rnd, 0);
             AmorE_Out out_val;
             memcpy(out_val.gamma, uart_buf, FP12_BYTES);
             memcpy(out_val.rho, uart_buf + FP12_BYTES, FP12_BYTES);
+            TRIG_COMPUTE_HI();
             t0 = cyc();
             int ok = AmorE_Verify(&sk, &sec, &out_val);
             uint32_t verify_cyc_this_round = cyc() - t0;
             res->verify_total_cycles[bi] += verify_cyc_this_round;
+            TRIG_COMPUTE_LO();
             if (N == 50 && rnd < 50) {
                 res->per_round_verify_n50[rnd] = verify_cyc_this_round;
             }
@@ -360,6 +372,7 @@ void AmorE_RunBenchmark(AmorE_BenchResults *res) {
 
             if (!ok) {
                 /* Honest round failed — abort */
+                TRIG_ALL_LO();
                 res->status = 0xDEAD0050u | bi;
                 return;
             }

@@ -41,6 +41,30 @@ add_compile_definitions(${CURVE_DEFINE} FP_LIMBS=${FP_LIMBS_VAL})
 
 set(AMORE_TARGET "amore_${CURVE_SUFFIX}")
 
+# =============================================================================
+#  Measurement mode + benchmark size (Pre-PPK2 phase)
+# =============================================================================
+set(MEASUREMENT_MODE "A" CACHE STRING
+    "Energy measurement mode: A=AmorE protocol, B=direct N-pairing loop")
+set_property(CACHE MEASUREMENT_MODE PROPERTY STRINGS "A" "B")
+
+set(BENCH_N "10" CACHE STRING
+    "Iteration count for Mode B (number of pp_map_oatep_k12 calls)")
+
+set(AMORE_TRIGGERS_ENABLED "1" CACHE STRING
+    "1 = emit GPIO triggers around measurable phases, 0 = no triggers")
+
+add_compile_definitions(AMORE_TRIGGERS_ENABLED=${AMORE_TRIGGERS_ENABLED})
+
+if(MEASUREMENT_MODE STREQUAL "B")
+    add_compile_definitions(PB_N_ITER=${BENCH_N}u)
+    message(STATUS "Mode B selected: BENCH_N=${BENCH_N} pairings per run")
+else()
+    message(STATUS "Mode A selected (AmorE protocol)")
+endif()
+
+message(STATUS "GPIO triggers: ${AMORE_TRIGGERS_ENABLED}")
+
 
 # =============================================================================
 #  Paths — STM32 Cube and RELIC

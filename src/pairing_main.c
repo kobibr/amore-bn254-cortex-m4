@@ -8,6 +8,7 @@
 
 #include "stm32f4xx_hal.h"
 #include "pairing_bench.h"
+#include "triggers.h"
 #include <string.h>
 
 /* Globals readable by GDB */
@@ -69,6 +70,7 @@ int main(void) {
     SystemClock_Config();
     LED_Init();
     DWT_Init();
+    Triggers_Init();
 
     LED_Set(0x1);  /* PD12 (green) on = booting */
 

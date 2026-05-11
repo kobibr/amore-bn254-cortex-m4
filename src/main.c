@@ -1,5 +1,6 @@
 #include "stm32f4xx_hal.h"
 #include "amore.h"
+#include "triggers.h"
 #include <string.h>
 
 /* Results stored in a known symbol so GDB can read them */
@@ -62,6 +63,7 @@ int main(void) {
     HAL_Init();
     SystemClock_Config();
     LED_Init();
+    Triggers_Init();
 
     /* Signal start: green on */
     LED_Set(0x1);

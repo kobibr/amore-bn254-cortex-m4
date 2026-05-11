@@ -1,5 +1,5 @@
 /*
- * stop_main.c — Stop-mode test for Pre-PPK2 Mock Day 4.
+ * stop_main.c — Stop-mode test.
  *
  * Behavior:
  *   1. Init clocks, LEDs, GPIO triggers.

@@ -1,5 +1,5 @@
 /*
- * wakeup_burst_main.c — wake-up burst for Pre-PPK2 Mock Day 4.
+ * wakeup_burst_main.c — wake-up burst.
  *
  * 100 consecutive Stop→Run cycles, ~10 ms each (RTC wake every 10 ms).
  * Total runtime ~1 second wall-clock.

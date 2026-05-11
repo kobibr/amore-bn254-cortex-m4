@@ -232,7 +232,7 @@ else()
 endif()
 
 # =============================================================================
-#  Target 4: Stop-mode test (Pre-PPK2 Mock Day 4)
+#  Target 4: Stop-mode test (Pre-PPK2)
 #
 #  Enters Stop mode, wakes every 5s for ~30s total (6 cycles). Toggles PA0
 #  on each transition and uses LED to indicate state visually.
@@ -256,7 +256,7 @@ add_custom_command(TARGET stop_test.elf POST_BUILD
 )
 
 # =============================================================================
-#  Target 5: Wake-up burst (Pre-PPK2 Mock Day 4)
+#  Target 5: Wake-up burst (Pre-PPK2)
 #
 #  100 consecutive Stop→Run cycles with RTC wakeup ~10 ms each.
 #  Toggles PA0 high during Run, low during Stop. Total runtime ~1s.

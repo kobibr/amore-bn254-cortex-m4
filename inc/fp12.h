@@ -33,5 +33,5 @@ void fp12_sqr(Fp12 *r, const Fp12 *a);
 void fp12_inv(Fp12 *r, const Fp12 *a);
 void fp12_exp(Fp12 *r, const Fp12 *base, const uint32_t k[8], int nbits);
 
-void fp12_to_bytes  (uint8_t out[576], const Fp12 *a);
-void fp12_from_bytes(Fp12 *r, const uint8_t in[576]);
+void fp12_to_bytes  (uint8_t out[FP12_BYTES], const Fp12 *a);
+void fp12_from_bytes(Fp12 *r, const uint8_t in[FP12_BYTES]);

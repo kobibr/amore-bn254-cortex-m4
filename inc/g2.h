@@ -20,5 +20,5 @@ void g2_scalar_mul(G2Point *r, const G2Point *p, const uint32_t k[8], int nbits)
 void g2_to_affine(Fp2 *rx, Fp2 *ry, const G2Point *p);
 
 /* Serialise: 192 bytes = 4 × 48 bytes (X.c0, X.c1, Y.c0, Y.c1, big-endian raw) */
-void g2_to_bytes(uint8_t out[192], const G2Point *p);
-void g2_from_bytes(G2Point *r, const uint8_t in[192]);
+void g2_to_bytes(uint8_t out[G2_BYTES], const G2Point *p);
+void g2_from_bytes(G2Point *r, const uint8_t in[G2_BYTES]);

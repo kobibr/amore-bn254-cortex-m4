@@ -10,8 +10,8 @@ void g1_inf(G1Point *r) {
 int g1_is_inf(const G1Point *p) { return fp_is_zero(p->Z); }
 
 void g1_generator(G1Point *r) {
-    memcpy(r->X, CURVE_G1X, 48);
-    memcpy(r->Y, CURVE_G1Y, 48);
+    memcpy(r->X, CURVE_G1X, FP_BYTES);
+    memcpy(r->Y, CURVE_G1Y, FP_BYTES);
     fp_one(r->Z);
 }
 
@@ -135,14 +135,14 @@ void g1_to_affine(Fp rx, Fp ry, const G1Point *p) {
     fp_mul(ry, p->Y, Zinv2);
 }
 
-void g1_to_bytes(uint8_t out[96], const G1Point *p) {
+void g1_to_bytes(uint8_t out[G1_BYTES], const G1Point *p) {
     Fp rx, ry;
     g1_to_affine(rx, ry, p);
     fp_to_bytes(out,    rx);
-    fp_to_bytes(out+48, ry);
+    fp_to_bytes(out+FP_BYTES, ry);
 }
-void g1_from_bytes(G1Point *r, const uint8_t in[96]) {
+void g1_from_bytes(G1Point *r, const uint8_t in[G1_BYTES]) {
     fp_from_bytes(r->X, in);
-    fp_from_bytes(r->Y, in+48);
+    fp_from_bytes(r->Y, in+FP_BYTES);
     fp_one(r->Z);
 }

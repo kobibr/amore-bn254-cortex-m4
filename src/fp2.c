@@ -81,11 +81,11 @@ void fp2_mul_xi(Fp2 *r, const Fp2 *a) {
 }
 
 /* Serialise: 96 bytes total = 48 (c0) + 48 (c1), big-endian. */
-void fp2_to_bytes(uint8_t out[96], const Fp2 *a) {
+void fp2_to_bytes(uint8_t out[FP2_BYTES], const Fp2 *a) {
     fp_to_bytes(out,      a->c0);
-    fp_to_bytes(out + 48, a->c1);
+    fp_to_bytes(out + FP_BYTES, a->c1);
 }
-void fp2_from_bytes(Fp2 *r, const uint8_t in[96]) {
+void fp2_from_bytes(Fp2 *r, const uint8_t in[FP2_BYTES]) {
     fp_from_bytes(r->c0, in);
-    fp_from_bytes(r->c1, in + 48);
+    fp_from_bytes(r->c1, in + FP_BYTES);
 }

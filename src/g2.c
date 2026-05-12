@@ -8,8 +8,8 @@ void g2_inf(G2Point *r) {
 int g2_is_inf(const G2Point *p) { return fp2_is_zero(&p->Z); }
 
 void g2_generator(G2Point *r) {
-    memcpy(r->X.c0, CURVE_G2X0, 48); memcpy(r->X.c1, CURVE_G2X1, 48);
-    memcpy(r->Y.c0, CURVE_G2Y0, 48); memcpy(r->Y.c1, CURVE_G2Y1, 48);
+    memcpy(r->X.c0, CURVE_G2X0, FP_BYTES); memcpy(r->X.c1, CURVE_G2X1, FP_BYTES);
+    memcpy(r->Y.c0, CURVE_G2Y0, FP_BYTES); memcpy(r->Y.c1, CURVE_G2Y1, FP_BYTES);
     fp2_one(&r->Z);
 }
 
@@ -109,14 +109,14 @@ void g2_to_affine(Fp2 *rx, Fp2 *ry, const G2Point *p) {
     fp2_mul(ry, &p->Y, &Zinv2);
 }
 
-void g2_to_bytes(uint8_t out[192], const G2Point *p) {
+void g2_to_bytes(uint8_t out[G2_BYTES], const G2Point *p) {
     Fp2 rx, ry;
     g2_to_affine(&rx, &ry, p);
     fp2_to_bytes(out,    &rx);
-    fp2_to_bytes(out+96, &ry);
+    fp2_to_bytes(out+FP2_BYTES, &ry);
 }
-void g2_from_bytes(G2Point *r, const uint8_t in[192]) {
+void g2_from_bytes(G2Point *r, const uint8_t in[G2_BYTES]) {
     fp2_from_bytes(&r->X, in);
-    fp2_from_bytes(&r->Y, in+96);
+    fp2_from_bytes(&r->Y, in+FP2_BYTES);
     fp2_one(&r->Z);
 }

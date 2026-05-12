@@ -332,7 +332,7 @@ void AmorE_RunBenchmark(AmorE_BenchResults *res) {
                 res->status = 0xDEAD0030u | bi;
                 return;
             }
-            if (rlen != 1152) {
+            if (rlen != AMORE_PROTO_IN_BYTES) {
                 error_set(ERR_UART_LEN, bi, rnd);
                 res->rounds_uart_err[bi]++;
                 TRIG_ALL_LO();
@@ -349,7 +349,21 @@ void AmorE_RunBenchmark(AmorE_BenchResults *res) {
             memcpy(out_val.rho, uart_buf + FP12_BYTES, FP12_BYTES);
             TRIG_COMPUTE_HI();
             t0 = cyc();
+            /* === DBG CAPTURE: round 0 only (non-invasive snapshot) === */
+            if (bi == 0 && rnd == 0) {
+                memcpy(res->dbg_first_uart, uart_buf, 32);
+                memcpy(res->dbg_first_gamma, out_val.gamma, 16);
+                memcpy(res->dbg_first_rho, out_val.rho, 16);
+                memcpy(res->dbg_first_xi, (const uint8_t*)&sk.xi, 16);
+                memcpy(res->dbg_first_sec_r, (const uint8_t*)sec.r, 16);
+                res->dbg_sk_s_first = ((const uint32_t*)&sk.s)[0];
+                res->dbg_sec_nbits = sec.nbits;
+                res->dbg_uart_rlen = rlen;
+                res->dbg_round_captured = rnd;
+            }
+            res->dbg_verify_called++;
             int ok = AmorE_Verify(&sk, &sec, &out_val);
+            res->dbg_verify_last_ok = (uint32_t)ok;
             uint32_t verify_cyc_this_round = cyc() - t0;
             res->verify_total_cycles[bi] += verify_cyc_this_round;
             TRIG_COMPUTE_LO();
@@ -407,7 +421,7 @@ void AmorE_RunBenchmark(AmorE_BenchResults *res) {
         uint8_t cmd; uint16_t rlen;
         int rc = uart_recv_packet(&cmd, uart_buf, &rlen, sizeof(uart_buf), UART_TIMEOUT_MS);
 
-        if (rc == 0 && cmd == UART_CMD_RESULT && rlen == 1152) {
+        if (rc == 0 && cmd == UART_CMD_RESULT && rlen == AMORE_PROTO_IN_BYTES) {
             res->sec_recv_ok = 1;
 
             phase_set(PHASE_SECURITY_VFY, 3, 0, 0);

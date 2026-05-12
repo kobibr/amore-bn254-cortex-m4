@@ -144,14 +144,14 @@ void fp12_exp(Fp12 *r, const Fp12 *base, const uint32_t k[8], int nbits) {
 
 /* Serialise: 12 × 32 bytes, each coefficient big-endian.
  * Layout: [coeff[0], coeff[1], ..., coeff[11]] — matches py_ecc flat12() exactly. */
-void fp12_to_bytes(uint8_t out[576], const Fp12 *a) {
+void fp12_to_bytes(uint8_t out[FP12_BYTES], const Fp12 *a) {
     const Fp12Flat *fa = fp12_flat_c(a);
     for (int i = 0; i < 12; i++)
-        fp_to_bytes(out + i*48, (*fa)[i]);
+        fp_to_bytes(out + i*FP_BYTES, (*fa)[i]);
 }
 
-void fp12_from_bytes(Fp12 *r, const uint8_t in[576]) {
+void fp12_from_bytes(Fp12 *r, const uint8_t in[FP12_BYTES]) {
     Fp12Flat *fr = fp12_flat(r);
     for (int i = 0; i < 12; i++)
-        fp_from_bytes((*fr)[i], in + i*48);
+        fp_from_bytes((*fr)[i], in + i*FP_BYTES);
 }

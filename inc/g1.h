@@ -27,5 +27,5 @@ void g1_scalar_mul(G1Point *r, const G1Point *p, const uint32_t k[8], int nbits)
 void g1_to_affine(Fp rx, Fp ry, const G1Point *p);
 
 /* Serialise to/from 96 bytes raw big-endian (plain field, NOT Montgomery) */
-void g1_to_bytes(uint8_t out[96], const G1Point *p);
-void g1_from_bytes(G1Point *r, const uint8_t in[96]);
+void g1_to_bytes(uint8_t out[G1_BYTES], const G1Point *p);
+void g1_from_bytes(G1Point *r, const uint8_t in[G1_BYTES]);

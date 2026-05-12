@@ -29,5 +29,5 @@ void fp2_inv(Fp2 *r, const Fp2 *a);
 void fp2_mul_xi(Fp2 *r, const Fp2 *a);
 
 /* Serialise as 96 bytes (48 per Fp coefficient, big-endian). */
-void fp2_to_bytes(uint8_t out[96], const Fp2 *a);
-void fp2_from_bytes(Fp2 *r, const uint8_t in[96]);
+void fp2_to_bytes(uint8_t out[FP2_BYTES], const Fp2 *a);
+void fp2_from_bytes(Fp2 *r, const uint8_t in[FP2_BYTES]);

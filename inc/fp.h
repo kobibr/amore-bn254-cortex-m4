@@ -30,5 +30,5 @@ void fp_to_mont(Fp r, const Fp a_plain);     /* r = a * R mod p  */
 void fp_from_mont(Fp r, const Fp a_mont);    /* r = a * R^{-1} mod p */
 
 /* Serialise / deserialise (48 bytes big-endian, raw field value, NOT Montgomery) */
-void fp_to_bytes(uint8_t out[48], const Fp a);
-void fp_from_bytes(Fp r, const uint8_t in[48]);
+void fp_to_bytes(uint8_t out[FP_BYTES], const Fp a);
+void fp_from_bytes(Fp r, const uint8_t in[FP_BYTES]);

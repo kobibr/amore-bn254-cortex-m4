@@ -132,6 +132,20 @@ typedef struct {
     uint32_t      log_head;
     PhaseLogEntry log[PHASE_LOG_LEN];
 
+
+    /* === DEBUG TELEMETRY (2026-05-12, BN254 verify investigation) === */
+    uint8_t  dbg_first_uart[32];    /* first 32 bytes of uart_buf after recv */
+    uint8_t  dbg_first_gamma[16];   /* first 16 bytes of out_val.gamma */
+    uint8_t  dbg_first_rho[16];     /* first 16 bytes of out_val.rho */
+    uint8_t  dbg_first_xi[16];      /* first 16 bytes of sk.xi (from OTS) */
+    uint8_t  dbg_first_sec_r[16];   /* first 16 bytes of sec.r (the secret) */
+    uint32_t dbg_sk_s_first;        /* first uint32 of sk.s */
+    uint32_t dbg_sec_nbits;         /* sec.nbits */
+    uint32_t dbg_verify_called;     /* incremented each Verify call */
+    uint32_t dbg_verify_last_ok;    /* last Verify return value */
+    uint32_t dbg_round_captured;    /* round number where snapshot taken */
+    uint32_t dbg_uart_rlen;         /* rlen received from server */
+
     /* Final status */
     uint32_t status;             /* 0x600D0000 = everything passed   */
 } AmorE_BenchResults;

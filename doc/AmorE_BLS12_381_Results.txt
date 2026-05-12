@@ -2,8 +2,9 @@
 ║         AmorE BLS12-381 — Benchmark Results Report                       ║
 ║         Platform : STM32F407 Discovery @ 168 MHz (Cortex-M4 + FPU)       ║
 ║         Protocol : Amortized Remote Pairing Evaluation over BLS12-381    ║
-║         Date     : 2026-05-07                                             ║
-║         Binary   : SHA256 7303fa43ae7a39649c12b86543116ff3b63e0e599a09... ║
+║         Date     : 2026-05-07 (Sect 0-7) / 2026-05-12 (Sect 8 added)      ║
+║         Binary   : SHA256 7303fa43... (Sect 0-7, pre-optimization)        ║
+║                    SHA256 4e2df263... (Sect 8, post-optimization)         ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 
 
@@ -282,3 +283,355 @@
     Build:    cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-stm32f4.cmake
               cmake --build build --target amorebn128.elf
     Binary:   SHA256 7303fa43ae7a39649c12b86543116ff3b63e0e599a09dca885108a651397a564
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  8. COMPILER OPTIMIZATION UPDATE  (2026-05-12)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Sections 0-7 above report measurements taken on 2026-05-07 against
+  the pre-optimization binary. Section 8 documents the post-optimization
+  re-validation on 2026-05-12. Both binaries produce mathematically
+  correct results (61/61 honest + 1/1 malicious in each); only the
+  per-round timing differs.
+
+  8.1 The build flag that makes the difference
+  ────────────────────────────────────────────
+
+  Two build variants are now supported:
+
+    Variant A  (pre-optimization, "looped fp_mul"):
+      CMake option:  -DAMORE_BUILD_VARIANT=A
+      Effect:        FP_LIMBS not exposed as compile-time literal
+      Result:        GCC compiles fp_mul inner loops as loops
+      fp_mul size:   376 bytes, 131 instructions
+      Use:           Reproduce Diego's 2026-05-07 measurements
+
+    Variant B  (post-optimization, "unrolled fp_mul"):
+      CMake option:  -DAMORE_BUILD_VARIANT=B   (default)
+      Effect:        -DFP_LIMBS=12 passed as global compile definition
+      Result:        GCC unrolls inner loops of fp_mul
+      fp_mul size:   1,300 bytes, 469 instructions
+      Use:           Current default, 2.14x faster
+
+  Build commands:
+    Variant A:  cmake -B build/variantA -DAMORE_BUILD_VARIANT=A \
+                      -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-stm32f4.cmake \
+                      -DCURVE=BLS12_381
+    Variant B:  cmake -B build/variantB -DAMORE_BUILD_VARIANT=B \
+                      -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-stm32f4.cmake \
+                      -DCURVE=BLS12_381
+
+
+  8.2 Measurement comparison table
+  ────────────────────────────────
+
+  Both variants were validated independently. Same Pi server, same
+  hardware, same protocol, same 92-minute benchmark methodology.
+
+  ┌─────────────────────────┬──────────────────┬──────────────────┬─────────┐
+  │ Metric                  │ Variant A        │ Variant B        │ Ratio   │
+  │                         │ (Looped fp_mul)  │ (Unrolled fp_mul)│ B vs A  │
+  ├─────────────────────────┼──────────────────┼──────────────────┼─────────┤
+  │ Build flag              │ (no -DFP_LIMBS)  │ -DFP_LIMBS=12    │         │
+  │ fp_mul size             │   376 B          │ 1,300 B          │ 3.46x   │
+  │ Total flash (.text)     │ 15,544 B         │ 22,084 B *       │         │
+  ├─────────────────────────┼──────────────────┼──────────────────┼─────────┤
+  │ OneTimeSetup            │ 2,565.2 ms       │ 1,151.2 ms       │ 2.23x   │
+  │ Setup (per round)       │ 1,032.1 ms       │   488    ms      │ 2.11x   │
+  │ Verify (per round)      │   887.2 ms       │   410    ms      │ 2.16x   │
+  │ Amort/round (N=50, MAIN)│ 1,919.3 ms       │   898.0 ms       │ 2.14x   │
+  ├─────────────────────────┼──────────────────┼──────────────────┼─────────┤
+  │ vs 3x direct pairing    │ 1.22x (slower)   │ 0.572x (faster!) │         │
+  │ vs BN254 baseline       │ 5.03x slowdown   │ 2.35x slowdown   │         │
+  ├─────────────────────────┼──────────────────┼──────────────────┼─────────┤
+  │ Honest verified         │   61/61          │   61/61          │ same    │
+  │ Malicious rejected      │    1/1           │    1/1           │ same    │
+  │ Status word             │ 0x600D0000       │ 0x600D0000       │ same    │
+  └─────────────────────────┴──────────────────┴──────────────────┴─────────┘
+
+  * Variant B .text includes additional energy-study instrumentation
+    (GPIO triggers, debug telemetry, multiple main binaries). Protocol-
+    only growth from unrolling alone: ~+2 KiB.
+
+
+  8.3 Source identity and reproducibility tags
+  ────────────────────────────────────────────
+
+  Variant A (pre-optimization, Diego's 2026-05-07 reference):
+    Git tag:       measurement-baseline-2026-05-07
+    Commit hash:   752c745
+    Binary SHA:    7303fa43... (original) / bcd92cc3... (rebuild, same code)
+    Audit:         bash scripts/security_audit.sh    (8/8 PASS)
+
+  Variant B (post-optimization, current default):
+    Git tag:       measurement-post-encoding-fix-2026-05-12
+    Commit hash:   d3b497d
+    Binary SHA:    4e2df263...
+    Audit:         bash scripts/security_audit.sh    (8/8 PASS)
+
+  Current HEAD (main):
+    Git tag:       measurement-current-2026-05-12
+    Commit hash:   0ecc6e8 (= d3b497d + rpi/server.py BLS-era sync)
+    Functionally equivalent to Variant B for STM32 side.
+
+
+  8.4 Root cause: what makes Variant B 2.14x faster
+  ─────────────────────────────────────────────────
+
+  The optimization is GCC loop unrolling of inner Montgomery
+  multiplication loops, NOT a VFP/FPU optimization. The commit
+  message in ffb7a0f referring to "VFP register optimization" is
+  a misnomer.
+
+  Disassembly evidence (fp_mul function in both binaries):
+
+    Variant A: 131 instructions, 2 UMLAL in code, 8 backward branches
+               (CIOS inner loops compiled as runtime loops)
+    Variant B: 469 instructions, 24 UMLAL in code, 14 branches
+               (12 of which are co-located early-exit checks; inner
+               loops fully unrolled, outer loop still iterated)
+
+  Both variants execute the same total work: ~288 UMLAL operations
+  per fp_mul call (12 outer iterations x 12 inner iterations x 2 inner
+  loop bodies). The Variant B speedup comes from eliminating per-
+  iteration overhead in the inner loops:
+
+    - Loop counter increment/compare/branch (3 instructions per iter)
+    - Pipeline stalls on conditional branches
+    - Register pressure from loop variables
+
+  The Cortex-M4 (FPv4-SP-D16) FPU is single-precision float and is
+  NOT applicable to 32x32 -> 64 unsigned integer multiplication.
+  UMLAL (integer multiply-accumulate) is the correct instruction
+  and is used in both variants.
+
+
+  8.5 Effect on direct-pairing comparison (Section 5 update)
+  ──────────────────────────────────────────────────────────
+
+  Variant A:  AmorE / 3xdirect = 1,919 / 1,570 = 1.22x  (AmorE slower)
+  Variant B:  AmorE / 3xdirect =   898 / 1,570 = 0.572x (AmorE faster)
+
+  Caveat: the 1,570 ms direct-pairing reference is the 2026-05-07
+  RELIC measurement, taken against a RELIC build that does NOT have
+  the equivalent -DFP_LIMBS=12 unrolling flag. RELIC's Montgomery
+  multiplication uses similar 12-limb arithmetic and would likely
+  show a comparable speedup if rebuilt. The like-for-like RELIC
+  re-measurement is planned for the energy-study phase.
+
+
+  8.6 Effect on BLS/BN254 comparison (Section 6 update)
+  ─────────────────────────────────────────────────────
+
+  Variant A:  BLS / BN254 = 1,919.3 / 381.8 = 5.03x slowdown
+  Variant B:  BLS / BN254 =   898.0 / 381.8 = 2.35x slowdown
+
+  The BN254 baseline (381.8 ms) is from 2026-04-01, also pre-
+  optimization. A like-for-like comparison requires re-measuring
+  BN254 with the same compile flags. This is blocked because
+  fp12_mul on the current unified branch is BLS12-381-specific
+  (BN254 needs a curve-specific reduction polynomial); see
+  docs/future_work.md for details.
+
+  The updated 2.35x ratio is closer to the simpler theoretical
+  prediction (field x limb scaling ~2-3x, no missed-optimization
+  penalty).
+
+
+  8.7 Summary
+  ───────────
+
+  - Optimization restored:  GCC loop unrolling via -DFP_LIMBS=12
+  - Mechanism:              Build flag exposes FP_LIMBS as compile-
+                            time literal -> GCC unrolls inner loops
+  - Result:                 2.14x speedup, identical correctness
+  - Not VFP/FPU related:    Both variants use UMLAL integer mul
+  - Reproducibility:        Use -DAMORE_BUILD_VARIANT=A or =B in CMake
+  - Tags:                   measurement-baseline-2026-05-07 (Variant A)
+                            measurement-post-encoding-fix-2026-05-12 (Variant B)
+
+  Pending follow-up:
+    1. Re-measure RELIC baseline with unrolling for fair comparison
+    2. Re-measure BN254 baseline on unified firmware
+    3. Hand-tuned ARM assembly for fp_mul using UMAAL: projected
+       additional ~30% speedup (-> ~628 ms amort per round)
+    4. Energy measurement with PPK2 (hardware arrived 2026-05-12)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  8. COMPILER OPTIMIZATION UPDATE  (2026-05-12)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Sections 0-7 above report measurements taken on 2026-05-07 against
+  the pre-optimization binary. Section 8 documents the post-optimization
+  re-validation on 2026-05-12. Both binaries produce mathematically
+  correct results (61/61 honest + 1/1 malicious in each); only the
+  per-round timing differs.
+
+  8.1 The build flag that makes the difference
+  ────────────────────────────────────────────
+
+  Two build variants are now supported:
+
+    Variant A  (pre-optimization, "looped fp_mul"):
+      CMake option:  -DAMORE_BUILD_VARIANT=A
+      Effect:        FP_LIMBS not exposed as compile-time literal
+      Result:        GCC compiles fp_mul inner loops as loops
+      fp_mul size:   376 bytes, 131 instructions
+      Use:           Reproduce Diego's 2026-05-07 measurements
+
+    Variant B  (post-optimization, "unrolled fp_mul"):
+      CMake option:  -DAMORE_BUILD_VARIANT=B   (default)
+      Effect:        -DFP_LIMBS=12 passed as global compile definition
+      Result:        GCC unrolls inner loops of fp_mul
+      fp_mul size:   1,300 bytes, 469 instructions
+      Use:           Current default, 2.14x faster
+
+  Build commands:
+    Variant A:  cmake -B build/variantA -DAMORE_BUILD_VARIANT=A \
+                      -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-stm32f4.cmake \
+                      -DCURVE=BLS12_381
+    Variant B:  cmake -B build/variantB -DAMORE_BUILD_VARIANT=B \
+                      -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-stm32f4.cmake \
+                      -DCURVE=BLS12_381
+
+
+  8.2 Measurement comparison table
+  ────────────────────────────────
+
+  Both variants were validated independently. Same Pi server, same
+  hardware, same protocol, same 92-minute benchmark methodology.
+
+  ┌─────────────────────────┬──────────────────┬──────────────────┬─────────┐
+  │ Metric                  │ Variant A        │ Variant B        │ Ratio   │
+  │                         │ (Looped fp_mul)  │ (Unrolled fp_mul)│ B vs A  │
+  ├─────────────────────────┼──────────────────┼──────────────────┼─────────┤
+  │ Build flag              │ (no -DFP_LIMBS)  │ -DFP_LIMBS=12    │         │
+  │ fp_mul size             │   376 B          │ 1,300 B          │ 3.46x   │
+  │ Total flash (.text)     │ 15,544 B         │ 22,084 B *       │         │
+  ├─────────────────────────┼──────────────────┼──────────────────┼─────────┤
+  │ OneTimeSetup            │ 2,565.2 ms       │ 1,151.2 ms       │ 2.23x   │
+  │ Setup (per round)       │ 1,032.1 ms       │   488    ms      │ 2.11x   │
+  │ Verify (per round)      │   887.2 ms       │   410    ms      │ 2.16x   │
+  │ Amort/round (N=50, MAIN)│ 1,919.3 ms       │   898.0 ms       │ 2.14x   │
+  ├─────────────────────────┼──────────────────┼──────────────────┼─────────┤
+  │ vs 3x direct pairing    │ 1.22x (slower)   │ 0.572x (faster!) │         │
+  │ vs BN254 baseline       │ 5.03x slowdown   │ 2.35x slowdown   │         │
+  ├─────────────────────────┼──────────────────┼──────────────────┼─────────┤
+  │ Honest verified         │   61/61          │   61/61          │ same    │
+  │ Malicious rejected      │    1/1           │    1/1           │ same    │
+  │ Status word             │ 0x600D0000       │ 0x600D0000       │ same    │
+  └─────────────────────────┴──────────────────┴──────────────────┴─────────┘
+
+  * Variant B .text includes additional energy-study instrumentation
+    (GPIO triggers, debug telemetry, multiple main binaries). Protocol-
+    only growth from unrolling alone: ~+2 KiB.
+
+
+  8.3 Source identity and reproducibility tags
+  ────────────────────────────────────────────
+
+  Variant A (pre-optimization, Diego's 2026-05-07 reference):
+    Git tag:       measurement-baseline-2026-05-07
+    Commit hash:   752c745
+    Binary SHA:    7303fa43... (original) / bcd92cc3... (rebuild, same code)
+    Audit:         bash scripts/security_audit.sh    (8/8 PASS)
+
+  Variant B (post-optimization, current default):
+    Git tag:       measurement-post-encoding-fix-2026-05-12
+    Commit hash:   d3b497d
+    Binary SHA:    4e2df263...
+    Audit:         bash scripts/security_audit.sh    (8/8 PASS)
+
+  Current HEAD (main):
+    Git tag:       measurement-current-2026-05-12
+    Commit hash:   0ecc6e8 (= d3b497d + rpi/server.py BLS-era sync)
+    Functionally equivalent to Variant B for STM32 side.
+
+
+  8.4 Root cause: what makes Variant B 2.14x faster
+  ─────────────────────────────────────────────────
+
+  The optimization is GCC loop unrolling of inner Montgomery
+  multiplication loops, NOT a VFP/FPU optimization. The commit
+  message in ffb7a0f referring to "VFP register optimization" is
+  a misnomer.
+
+  Disassembly evidence (fp_mul function in both binaries):
+
+    Variant A: 131 instructions, 2 UMLAL in code, 8 backward branches
+               (CIOS inner loops compiled as runtime loops)
+    Variant B: 469 instructions, 24 UMLAL in code, 14 branches
+               (12 of which are co-located early-exit checks; inner
+               loops fully unrolled, outer loop still iterated)
+
+  Both variants execute the same total work: ~288 UMLAL operations
+  per fp_mul call (12 outer iterations x 12 inner iterations x 2 inner
+  loop bodies). The Variant B speedup comes from eliminating per-
+  iteration overhead in the inner loops:
+
+    - Loop counter increment/compare/branch (3 instructions per iter)
+    - Pipeline stalls on conditional branches
+    - Register pressure from loop variables
+
+  The Cortex-M4 (FPv4-SP-D16) FPU is single-precision float and is
+  NOT applicable to 32x32 -> 64 unsigned integer multiplication.
+  UMLAL (integer multiply-accumulate) is the correct instruction
+  and is used in both variants.
+
+
+  8.5 Effect on direct-pairing comparison (Section 5 update)
+  ──────────────────────────────────────────────────────────
+
+  Variant A:  AmorE / 3xdirect = 1,919 / 1,570 = 1.22x  (AmorE slower)
+  Variant B:  AmorE / 3xdirect =   898 / 1,570 = 0.572x (AmorE faster)
+
+  Caveat: the 1,570 ms direct-pairing reference is the 2026-05-07
+  RELIC measurement, taken against a RELIC build that does NOT have
+  the equivalent -DFP_LIMBS=12 unrolling flag. RELIC's Montgomery
+  multiplication uses similar 12-limb arithmetic and would likely
+  show a comparable speedup if rebuilt. The like-for-like RELIC
+  re-measurement is planned for the energy-study phase.
+
+
+  8.6 Effect on BLS/BN254 comparison (Section 6 update)
+  ─────────────────────────────────────────────────────
+
+  Variant A:  BLS / BN254 = 1,919.3 / 381.8 = 5.03x slowdown
+  Variant B:  BLS / BN254 =   898.0 / 381.8 = 2.35x slowdown
+
+  The BN254 baseline (381.8 ms) is from 2026-04-01, also pre-
+  optimization. A like-for-like comparison requires re-measuring
+  BN254 with the same compile flags. This is blocked because
+  fp12_mul on the current unified branch is BLS12-381-specific
+  (BN254 needs a curve-specific reduction polynomial); see
+  docs/future_work.md for details.
+
+  The updated 2.35x ratio is closer to the simpler theoretical
+  prediction (field x limb scaling ~2-3x, no missed-optimization
+  penalty).
+
+
+  8.7 Summary
+  ───────────
+
+  - Optimization restored:  GCC loop unrolling via -DFP_LIMBS=12
+  - Mechanism:              Build flag exposes FP_LIMBS as compile-
+                            time literal -> GCC unrolls inner loops
+  - Result:                 2.14x speedup, identical correctness
+  - Not VFP/FPU related:    Both variants use UMLAL integer mul
+  - Reproducibility:        Use -DAMORE_BUILD_VARIANT=A or =B in CMake
+  - Tags:                   measurement-baseline-2026-05-07 (Variant A)
+                            measurement-post-encoding-fix-2026-05-12 (Variant B)
+
+  Pending follow-up:
+    1. Re-measure RELIC baseline with unrolling for fair comparison
+    2. Re-measure BN254 baseline on unified firmware
+    3. Hand-tuned ARM assembly for fp_mul using UMAAL: projected
+       additional ~30% speedup (-> ~628 ms amort per round)
+    4. Energy measurement with PPK2 (hardware arrived 2026-05-12)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -1,0 +1,115 @@
+{
+  "_description": "Expected measurement values per optimization variant. Tolerance is in percent (+/-). Used by run_overnight_regression.sh to PASS/FAIL each cycle. If any metric falls outside its tolerance, that cycle is marked FAIL.",
+  "_baseline_run": "logs/combined_report_20260512_090923.txt (61/61 + 1/1, status 0x600D0000)",
+  "_paper_data": "Sections 0-7 of doc/AmorE_BLS12_381_Results.txt",
+
+  "O2": {
+    "_label": "Variant A: CMAKE_BUILD_TYPE unset, implicit -O2",
+    "_git_tag": "measurement-O2-2026-05-12",
+    "_binary_sha_prefix": "6ce9f8de",
+    "_build_command": "cmake -B build/O2 -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-stm32f4.cmake -DCURVE=BLS12_381",
+
+    "fp_mul_size_bytes": {
+      "expected": 376,
+      "tolerance_pct": 5,
+      "min": 357,
+      "max": 395
+    },
+    "ots_ms": {
+      "expected": 2565.2,
+      "tolerance_pct": 10,
+      "min": 2308.7,
+      "max": 2821.7
+    },
+    "blind_per_round_ms": {
+      "expected": 1032.1,
+      "tolerance_pct": 10,
+      "min": 928.9,
+      "max": 1135.3
+    },
+    "verify_per_round_ms": {
+      "expected": 887.2,
+      "tolerance_pct": 10,
+      "min": 798.5,
+      "max": 975.9
+    },
+    "amort_per_round_ms": {
+      "expected": 1919.3,
+      "tolerance_pct": 10,
+      "min": 1727.4,
+      "max": 2111.2
+    },
+    "honest_verified": {
+      "expected": 61,
+      "tolerance_pct": 0,
+      "min": 61,
+      "max": 61
+    },
+    "malicious_rejected": {
+      "expected": 1,
+      "tolerance_pct": 0,
+      "min": 1,
+      "max": 1
+    },
+    "status_word_hex": "0x600D0000"
+  },
+
+  "O3": {
+    "_label": "Variant B: CMAKE_BUILD_TYPE=Release, -O3 -DNDEBUG",
+    "_git_tag": "measurement-O3-2026-05-12",
+    "_binary_sha_prefix": "4e2df263",
+    "_build_command": "cmake -B build/O3 -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-stm32f4.cmake -DCURVE=BLS12_381 -DCMAKE_BUILD_TYPE=Release",
+
+    "fp_mul_size_bytes": {
+      "expected": 1300,
+      "tolerance_pct": 5,
+      "min": 1235,
+      "max": 1365
+    },
+    "ots_ms": {
+      "expected": 1151.2,
+      "tolerance_pct": 10,
+      "min": 1036.1,
+      "max": 1266.3
+    },
+    "blind_per_round_ms": {
+      "expected": 488.0,
+      "tolerance_pct": 10,
+      "min": 439.2,
+      "max": 536.8
+    },
+    "verify_per_round_ms": {
+      "expected": 410.0,
+      "tolerance_pct": 10,
+      "min": 369.0,
+      "max": 451.0
+    },
+    "amort_per_round_ms": {
+      "expected": 898.0,
+      "tolerance_pct": 10,
+      "min": 808.2,
+      "max": 987.8
+    },
+    "honest_verified": {
+      "expected": 61,
+      "tolerance_pct": 0,
+      "min": 61,
+      "max": 61
+    },
+    "malicious_rejected": {
+      "expected": 1,
+      "tolerance_pct": 0,
+      "min": 1,
+      "max": 1
+    },
+    "status_word_hex": "0x600D0000"
+  },
+
+  "_speedup_check": {
+    "_description": "Cross-variant check: O2/O3 amort ratio should be in expected range",
+    "expected_ratio": 2.14,
+    "tolerance_pct": 15,
+    "min_ratio": 1.82,
+    "max_ratio": 2.46
+  }
+}

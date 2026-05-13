@@ -5,6 +5,33 @@
 ║         Date     : 2026-04-01                                            ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 
+  ─────────────────────────────────────────────────────────────────────────
+  Note added 2026-05-13:
+
+  AmorE BN254 below uses GCC -O2 throughout (Section 1). 
+
+  The RELIC BN254 baseline cited in Section 11 (252.3 ms) is built with 
+  the arm-asm-254 backend — hand-tuned ARM assembly for field arithmetic
+  (fp_mul_low, fp_add_low, fp_rdc_low as .s files). The -O2 / -O3 GCC
+  flag affects only the surrounding C code, not the assembly. The 252.3 ms
+  reflects RELIC's hand-tuned ASM performance, which is RELIC's intended
+  production configuration.
+
+  The Section 11 comparison is therefore "AmorE C at -O2" vs "RELIC C-with-
+  hand-tuned-ASM-backend". It is legitimate (both are production builds)
+  but is implementation-asymmetric (C vs ASM).
+
+  This is different from the BLS12-381 situation documented in
+  AmorE_BLS12_381_Results.txt Section 8.5, where RELIC uses ARITH=easy
+  (pure C at -O3) and AmorE was re-built at -O3 for clean -O3 vs -O3
+  comparison.
+
+  Future work (docs/future_work.md): hand-tuned ASM optimization of
+  AmorE's fp_mul (projected ~30% additional speedup, target ~268 ms
+  per round for BN254 if scaled from BLS).
+  ─────────────────────────────────────────────────────────────────────────
+
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   1. SYSTEM CONFIGURATION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

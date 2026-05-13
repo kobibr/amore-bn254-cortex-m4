@@ -207,18 +207,46 @@
   5. COMPARISON: AmorE vs DIRECT PAIRING (RELIC)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+  >>> See Section 8 for the corrected fair-comparison result. <
+  >>> Numbers below are the original 2026-05-07 measurement.   <
+
   Single pairing e(P, Q) via RELIC pp_map_oatep_k12:    523.4 ms
   3 x direct pairing:                                  1,570.2 ms
   AmorE per-round amortized (this work, N=50):         1,919.3 ms
 
-  AmorE / 3x direct ratio: 1.22x.
+  AmorE / 3x direct ratio (2026-05-07 figures): 1.22x.
 
-  On Cortex-M4 with BLS12-381, AmorE per-round exceeds the cost of
-  3 direct pairings. The client-side work consists of scalar
-  multiplications and one Fp12 exponentiation; pairings are
-  delegated to the server. Whether delegation is preferable in
-  this regime depends on factors not measured here (energy,
-  server trust assumptions, network constraints, latency).
+  The 2026-05-07 measurement compared AmorE compiled at GCC -O2 to
+  RELIC compiled at GCC -O3 (asymmetric build optimization that was
+  not apparent at the time of measurement). The original report
+  therefore concluded that AmorE per-round exceeded 3 direct pairings.
+
+  Re-validation on 2026-05-13 with both implementations at -O3 (fair
+  apples-to-apples comparison) reverses this conclusion:
+
+    Single pairing e(P, Q) via RELIC pp_map_oatep_k12 at -O3:  523.4 ms
+    3 x direct pairing at -O3:                               1,570.2 ms
+    AmorE per-round amortized at -O3 (N=50):                   898.0 ms
+
+    AmorE / 3x direct ratio at -O3 (fair comparison):           0.572x
+    AmorE is 1.75x FASTER than 3 direct pairings.
+
+  Evidence and reproducibility:
+    - AmorE -O3 binary SHA prefix:  4e2df263..., tag measurement-O3-2026-05-12
+    - RELIC -O3 measurement log:    logs/relic_bench_O3_20260513.txt
+    - RELIC build verified -O3:     librelic_s.a CFLAGS =
+                                    -O3 -funroll-loops -fomit-frame-pointer
+                                    (confirmed via CMakeCache.txt + flags.make)
+    - Diego's 523.4 ms reproduced to 0.002% (87,933,033 cycles avg of 10
+      iterations at 168 MHz, CV 0.00016%).
+
+  The client-side work in AmorE consists of scalar multiplications and one
+  Fp12 exponentiation; pairings are delegated to the server. With both
+  implementations at -O3, AmorE per-round client cost is significantly
+  lower than 3 direct pairings. Energy comparison pending PPK2 measurement
+  (the time speedup alone does not establish energy savings; battery-
+  constrained scenarios may show different trade-offs depending on
+  ServerWait duration).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   6. COMPARISON: BLS12-381 vs BN254  (see Finding 3)
@@ -421,11 +449,44 @@
   Variant A (-O2):  AmorE 1,919 ms / 3xdirect 1,570 ms = 1.22x (slower)
   Variant B (-O3):  AmorE   898 ms / 3xdirect 1,570 ms = 0.572x (faster)
 
-  The 1,570 ms RELIC baseline was measured against a pre-2026-05-12
-  RELIC build, likely also at -O2. RELIC's internal Montgomery
-  multiplication uses similar 12-limb arithmetic and would likely
-  show a comparable -O2 -> -O3 speedup. Re-measurement of RELIC
-  with -O3 is planned for the energy-study phase.
+  Update 2026-05-13: RELIC re-measurement confirmed.
+
+  The 1,570 ms RELIC baseline corresponds to 3 invocations of
+  pp_map_oatep_k12 at 523.4 ms each. Investigation of the original
+  librelic_s.a build flags (relic-bls12-381-experiment, May 2026)
+  showed that RELIC was compiled with:
+
+      -O3 -funroll-loops -fomit-frame-pointer
+
+  (Confirmed via CMakeCache.txt and CMakeFiles/relic_s.dir/flags.make.)
+
+  Re-running pp_map_oatep_k12 on STM32F407 at 168 MHz with the
+  unchanged librelic_s.a, 10 iterations, yielded:
+
+    pairing_min_cycles   = 87,932,879
+    pairing_max_cycles   = 87,933,153
+    pairing_avg_cycles   = 87,933,033  →  523.41 ms (matches 523.4 ms)
+    stdev                = ~140 cycles (CV 0.00016%)
+    bilinear_ok          = 1 (e(P,Q)^2 == e(2P,Q) verified)
+
+  Log: logs/relic_bench_O3_20260513.txt
+  Tag: measurement-RELIC-O3-2026-05-13
+
+  Therefore the Section 5 fair comparison at -O3 is:
+
+      AmorE -O3 amort:        898.0 ms (Variant B)
+      3 x RELIC -O3 direct: 1,570.2 ms (re-measured 2026-05-13)
+      AmorE / 3xdirect:       0.572x  =  AmorE is 1.75x FASTER
+
+  This is an apples-to-apples comparison: both implementations
+  compiled at -O3, run on the same hardware (Cortex-M4 @ 168 MHz),
+  measured via the DWT cycle counter.
+
+  The 2026-05-07 report's "1.22x slower" conclusion was the result
+  of comparing AmorE compiled at -O2 (unintentionally; this report's
+  earlier Sections 0-7 used that build) to RELIC compiled at -O3.
+  Both at -O3 reverses the comparison: AmorE is significantly
+  faster than 3 direct pairings.
 
 
   8.6 Effect on Section 6 (vs BN254)

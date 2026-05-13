@@ -97,3 +97,8 @@ tools/bls12_381_port/host_test/test_fp12_bytes
 tools/bls12_381_port/host_test/test_fp12_load
 tools/bls12_381_port/host_test/test_gt_pow_q
 relic_install_bn254/
+
+# Workspace backup files (saved before major edits)
+*.pre-*
+*.bak.*
+*.bak

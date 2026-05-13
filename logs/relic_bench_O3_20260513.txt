@@ -1,0 +1,40 @@
+RELIC pairing benchmark - BLS12-381 pp_map_oatep_k12
+Date: 2026-05-13
+Platform: STM32F407 Discovery @ 168 MHz (DWT cycle counter)
+RELIC build flags: -O3 -funroll-loops -fomit-frame-pointer
+RELIC config: FP_PRIME=381, ARITH=easy (C-only), WSIZE=32
+RELIC source: relic-bls12-381-experiment (FP_PRIME=381 confirmed)
+Library: librelic_s.a (876 KB, built May 5 17:55)
+
+Results (10 iterations of pp_map_oatep_k12):
+  pairing_min_cycles   = 87,932,879
+  pairing_max_cycles   = 87,933,153
+  pairing_avg_cycles   = 87,933,033
+  stdev                = ~140 cycles
+  CV                   = 0.00016%   (extremely stable)
+
+In milliseconds (at 168 MHz):
+  pp_map_oatep_k12 = 523.41 ms per pairing
+  3 x direct       = 1,570.24 ms
+
+Validation:
+  status      = 0x600D0000  (success)
+  init_ok     = 1
+  sanity_ok   = 1            (G1 scalar mul check passed)
+  bilinear_ok = 1            (e(P,Q)^2 == e(2P,Q) verified)
+  wall_ms     = 8,550        (total runtime including init)
+
+Match to Diego (2026-05-07) 523.4 ms: EXACT (within 0.002%).
+
+Fair -O3 vs -O3 comparison:
+  AmorE -O3 amort/round:      898.0 ms (binary 4e2df263..., tag measurement-O3-2026-05-12)
+  3 x RELIC -O3 direct:     1,570.2 ms (this measurement)
+  Ratio (AmorE / 3xdirect):   0.572x  (AmorE 1.75x FASTER)
+
+Notes:
+  Diego's 2026-05-07 report compared AmorE -O2 (1919 ms) to RELIC -O3
+  (523.4 ms) due to inconsistent build flags. Both at -O3 (fair) yields
+  AmorE 1.75x faster than 3 direct pairings, not 1.22x slower as
+  originally reported. The librelic_s.a in use was already at -O3
+  (CFLAGS: -O3 -funroll-loops -fomit-frame-pointer), confirmed via
+  CMakeCache.txt and flags.make of relic-build directory.

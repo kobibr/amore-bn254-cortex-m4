@@ -389,7 +389,8 @@
   │ Verify (per round)      │   887.2 ms       │   410    ms      │ 2.16x   │
   │ Amort/round (N=50, MAIN)│ 1,919.3 ms       │   898.0 ms       │ 2.14x   │
   ├─────────────────────────┼──────────────────┼──────────────────┼─────────┤
-  │ vs 1 local pairing**    │ 3.67x (slower)*  │ 1.72x (slower)   │         │
+  │ vs 1 local pairing**    │ N/A (no -O2 RELIC│ 1.72x (slower)   │         │
+  │                         │  measurement)    │                  │         │
   │ vs BN254 baseline*      │ 5.03x slowdown   │ 2.35x slowdown   │         │
   ├─────────────────────────┼──────────────────┼──────────────────┼─────────┤
   │ Honest rounds verified  │   61 / 61        │   61 / 61        │  same   │
@@ -518,17 +519,23 @@
   The Section 5 prose has been rewritten to reflect the 1:1 framing.
 
 
-  8.6 Effect on Section 6 (vs BN254)
-  ──────────────────────────────────
+  8.6 Effect on Section 6 (vs BN254) — INCOMPLETE: baseline at -O2
+  ────────────────────────────────────────────────────────────────
 
-  Variant A (-O2):  BLS 1,919 ms / BN254 381.8 ms = 5.03x slowdown
-  Variant B (-O3):  BLS   898 ms / BN254 381.8 ms = 2.35x slowdown
+  The BN254 baseline (381.8 ms) was measured on 2026-04-01 at -O2.
+  A like-for-like -O3 vs -O3 comparison requires re-measuring BN254
+  at -O3, which is pending (fp12_mul on the unified branch is
+  BLS12-381-specific; see follow-up notes).
 
-  The BN254 baseline (381.8 ms) was measured on 2026-04-01, also
-  pre-2026-05-12 (likely -O2). A direct apples-to-apples comparison
-  requires re-measuring BN254 with -O3. This is currently blocked
-  because fp12_mul on the unified branch is BLS12-381-specific
-  (see docs/future_work.md).
+  Reference figures (with asymmetry warning):
+
+    Variant A (-O2 BLS vs -O2 BN254):  1,919 / 381.8 = 5.03x  symmetric, valid
+    Variant B (-O3 BLS vs -O2 BN254):    898 / 381.8 = 2.35x  ASYMMETRIC
+
+  Variant B is not a clean comparison and is provided only for
+  reference. The 2.35x figure mixes -O3 AmorE with -O2 RELIC BN254
+  baseline. A proper apples-to-apples comparison requires the
+  BN254 re-measurement.
 
 
   8.7 Recommended overnight regression test

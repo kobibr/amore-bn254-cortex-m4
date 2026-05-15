@@ -207,29 +207,34 @@
   5. COMPARISON: AmorE vs DIRECT PAIRING (RELIC)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  >>> See Section 8 for the corrected fair-comparison result. <
-  >>> Numbers below are the original 2026-05-07 measurement.   <
+  Methodology: 1:1 comparison per AmorE paper Section 7.2
+  ("speedups...with respect to computing the pairing locally" —
+  comparing 1 AmorE delegation against 1 local pairing).
 
-  Single pairing e(P, Q) via RELIC pp_map_oatep_k12:    523.4 ms
-  3 x direct pairing:                                  1,570.2 ms
-  AmorE per-round amortized (this work, N=50):         1,919.3 ms
+  STM32F407 @ 168 MHz, BLS12-381, both implementations at -O3:
 
-  AmorE / 3x direct ratio (2026-05-07 figures): 1.22x.
+    RELIC pp_map_oatep_k12 (1 local pairing):     523.41 ms
+    AmorE 1 delegation amortized (N=50):          898.0 ms
+    Ratio: 898/523.4 = 1.72
 
-  The 2026-05-07 measurement compared AmorE compiled at GCC -O2 to
-  RELIC compiled at GCC -O3 (asymmetric build optimization that was
-  not apparent at the time of measurement). The original report
-  therefore concluded that AmorE per-round exceeded 3 direct pairings.
+    -> AmorE pays 1.72x the client cost of a local pairing on
+       this platform (Cortex-M4 without asm acceleration).
 
-  Re-validation on 2026-05-13 with both implementations at -O3 (fair
-  apples-to-apples comparison) reverses this conclusion:
+  Compare to AmorE paper Table 3 on Kaby Lake:
 
-    Single pairing e(P, Q) via RELIC pp_map_oatep_k12 at -O3:  523.4 ms
-    3 x direct pairing at -O3:                               1,570.2 ms
-    AmorE per-round amortized at -O3 (N=50):                   898.0 ms
+    Paper p (local pairing):       3,194 kcyc
+    Paper AmorE total client:      2,168 kcyc
+    Paper speedup: 1 - 2168/3194 = 32.1% (AmorE 1.47x faster)
 
-    AmorE / 3x direct ratio at -O3 (fair comparison):           0.572x
-    AmorE is 1.75x FASTER than 3 direct pairings.
+  Platform inversion: on Kaby Lake with optimized asm pairings,
+  AmorE wins by 32.1%. On Cortex-M4 without asm, the local pairing
+  is proportionally cheaper, AmorE client overhead (Setup + Verify)
+  dominates, and the comparison inverts. The RELIC BLS12-381 build
+  on this platform uses ARITH=easy (pure C), versus the asm-
+  accelerated Kaby Lake build that the paper benchmarks.
+
+  Hypothesis (not yet verified): the asm gap drives most of the
+  difference. Verifying would require porting fp_mul asm to Cortex-M4.
 
   Evidence and reproducibility:
     - AmorE -O3 binary SHA prefix:  4e2df263..., tag measurement-O3-2026-05-12
@@ -240,13 +245,18 @@
     - Diego's 523.4 ms reproduced to 0.002% (87,933,033 cycles avg of 10
       iterations at 168 MHz, CV 0.00016%).
 
-  The client-side work in AmorE consists of scalar multiplications and one
-  Fp12 exponentiation; pairings are delegated to the server. With both
-  implementations at -O3, AmorE per-round client cost is significantly
-  lower than 3 direct pairings. Energy comparison pending PPK2 measurement
-  (the time speedup alone does not establish energy savings; battery-
-  constrained scenarios may show different trade-offs depending on
-  ServerWait duration).
+  Note on prior framing: earlier versions of this report compared
+  AmorE per-round against "3 direct pairings" (yielding 1.22x slower
+  at -O2 in May 7, then 1.75x "faster" at -O3 in May 12). That
+  baseline was inherited from earlier benchmark work and conflated
+  server-side pairing work with what the client actually delegates
+  per round. The AmorE paper Section 7.2 specifies 1:1 (1 delegation
+  vs 1 local pairing). The 1:1 ratio above is the authoritative
+  comparison. See Section 8.5 for the correction history.
+
+  Energy comparison pending PPK2 measurement (the time ratio alone
+  does not establish energy budget; battery-constrained scenarios
+  may show different trade-offs depending on ServerWait duration).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   6. COMPARISON: BLS12-381 vs BN254  (see Finding 3)
@@ -379,7 +389,7 @@
   │ Verify (per round)      │   887.2 ms       │   410    ms      │ 2.16x   │
   │ Amort/round (N=50, MAIN)│ 1,919.3 ms       │   898.0 ms       │ 2.14x   │
   ├─────────────────────────┼──────────────────┼──────────────────┼─────────┤
-  │ vs 3x direct pairing*   │ 1.22x (slower)   │ 0.572x (faster)  │         │
+  │ vs 1 local pairing**    │ 3.67x (slower)*  │ 1.72x (slower)   │         │
   │ vs BN254 baseline*      │ 5.03x slowdown   │ 2.35x slowdown   │         │
   ├─────────────────────────┼──────────────────┼──────────────────┼─────────┤
   │ Honest rounds verified  │   61 / 61        │   61 / 61        │  same   │
@@ -443,25 +453,35 @@
   The real distinction documented in this section is -O2 vs -O3.
 
 
-  8.5 Effect on Section 5 (vs RELIC direct pairing)
-  ─────────────────────────────────────────────────
+  8.5 Effect on Section 5 (vs RELIC local pairing) — 1:1 framing
+  ───────────────────────────────────────────────────────────────
 
-  Variant A (-O2):  AmorE 1,919 ms / 3xdirect 1,570 ms = 1.22x (slower)
-  Variant B (-O3):  AmorE   898 ms / 3xdirect 1,570 ms = 0.572x (faster)
+  Per AmorE paper Section 7.2, the canonical comparison is 1:1
+  (1 AmorE delegation vs 1 local pairing), not 1:3.
 
-  Update 2026-05-13: RELIC re-measurement confirmed.
+  At -O3, both implementations:
 
-  The 1,570 ms RELIC baseline corresponds to 3 invocations of
-  pp_map_oatep_k12 at 523.4 ms each. Investigation of the original
-  librelic_s.a build flags (relic-bls12-381-experiment, May 2026)
-  showed that RELIC was compiled with:
+    AmorE -O3 amortized (N=50, 1 delegation): 898.0 ms
+    RELIC -O3 pp_map_oatep_k12 (1 pairing):   523.41 ms
+    Ratio: 898/523.4 = 1.72
 
-      -O3 -funroll-loops -fomit-frame-pointer
+    -> AmorE pays 1.72x the client cost of a local pairing.
 
-  (Confirmed via CMakeCache.txt and CMakeFiles/relic_s.dir/flags.make.)
+  Compare to AmorE paper Table 3 (Kaby Lake, with asm):
+    p:           3,194 kcyc
+    AmorE total: 2,168 kcyc (online + onetime/10)
+    Ratio: 2168/3194 = 0.68  (32.1% client gain, AmorE 1.47x faster)
 
-  Re-running pp_map_oatep_k12 on STM32F407 at 168 MHz with the
-  unchanged librelic_s.a, 10 iterations, yielded:
+  Platform inversion: paper wins on Kaby Lake (with asm) at 1.47x,
+  this implementation loses on Cortex-M4 (no asm) at 1.72x slower.
+  Hypothesized cause: RELIC's BLS12-381 build on Cortex-M4 uses
+  ARITH=easy (pure C), versus asm-accelerated Kaby Lake build.
+
+  RELIC re-measurement (the -O3 fix that was real and stands):
+
+    RELIC build verified -O3:     librelic_s.a CFLAGS =
+                                  -O3 -funroll-loops -fomit-frame-pointer
+                                  (confirmed via CMakeCache.txt + flags.make)
 
     pairing_min_cycles   = 87,932,879
     pairing_max_cycles   = 87,933,153
@@ -469,24 +489,33 @@
     stdev                = ~140 cycles (CV 0.00016%)
     bilinear_ok          = 1 (e(P,Q)^2 == e(2P,Q) verified)
 
-  Log: logs/relic_bench_O3_20260513.txt
-  Tag: measurement-RELIC-O3-2026-05-13
+    Log: logs/relic_bench_O3_20260513.txt
+    Tag: measurement-RELIC-O3-2026-05-13
 
-  Therefore the Section 5 fair comparison at -O3 is:
+  Correction history (Sections 5 + 8.5 of this doc):
 
-      AmorE -O3 amort:        898.0 ms (Variant B)
-      3 x RELIC -O3 direct: 1,570.2 ms (re-measured 2026-05-13)
-      AmorE / 3xdirect:       0.572x  =  AmorE is 1.75x FASTER
+    2026-05-07: Original comparison used "3 direct pairings" as
+                baseline. Yielded 1919/1570 = 1.22x slower.
 
-  This is an apples-to-apples comparison: both implementations
-  compiled at -O3, run on the same hardware (Cortex-M4 @ 168 MHz),
-  measured via the DWT cycle counter.
+    2026-05-12: Discovered AmorE was at -O2 while RELIC was at -O3
+                (asymmetric). Rebuilt AmorE at -O3: 898.0 ms.
+                At that point, re-applying "3 direct pairings"
+                baseline yielded 898/1570 = 0.572 (1.75x "faster").
 
-  The 2026-05-07 report's "1.22x slower" conclusion was the result
-  of comparing AmorE compiled at -O2 (unintentionally; this report's
-  earlier Sections 0-7 used that build) to RELIC compiled at -O3.
-  Both at -O3 reverses the comparison: AmorE is significantly
-  faster than 3 direct pairings.
+    2026-05-13: Diego asked why 3-pairings baseline. Re-reading paper
+                Section 7.2 confirmed the canonical comparison is 1:1.
+                The "3 direct pairings" was inherited from earlier
+                benchmark work and conflated server pairing work with
+                what the client actually delegates per round (the
+                AmorE server does ~3 pairings per round, but those
+                are server-side, not what the client offloads).
+
+                Corrected ratio (1:1): 898/523.4 = 1.72 (slower).
+                The -O3 fix is still real (AmorE rebuilds 1919->898),
+                but the baseline correction means it does not flip
+                the conclusion direction (only reduces magnitude).
+
+  The Section 5 prose has been rewritten to reflect the 1:1 framing.
 
 
   8.6 Effect on Section 6 (vs BN254)

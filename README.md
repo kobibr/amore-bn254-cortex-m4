@@ -25,8 +25,11 @@ Francisco Rodríguez-Henríquez** (eprint 2025/542) that lets a
 memory-constrained device outsource pairing computations to an untrusted
 helper while preserving:
 
-- **Input privacy** — the helper never sees the plaintext inputs
-  `(A, B)`; only blinded versions are transmitted.
+- **Pairing-library avoidance** — the client does not need a pairing
+  library; pairings are delegated to the server. AmorE is a public-input
+  protocol (paper Section 1, Table 1): the pairing arguments `(A, B)`
+  are sent to the server in the clear. The protocol provides
+  *verifiability* of the server's response, not input confidentiality.
 - **Cheating detection** — a forged response from a malicious helper is
   rejected with overwhelming probability.
 - **Amortization** — per-round client cost is essentially constant
@@ -138,7 +141,7 @@ value on this part is therefore not raw speed; it is in:
 
 - **Memory footprint** — the AmorE client is **33× smaller** in SRAM and
   **3× smaller** in Flash than a full RELIC pairing build.
-- **Privacy** — the server never sees plaintext inputs.
+- **No on-device pairing** — the client avoids loading a full pairing implementation; the server does the pairing work. (Note: AmorE is a public-input protocol; pairing arguments `(A,B)` are sent in the clear.)
 - **Feasibility on smaller MCUs** — RELIC's pairing state (101 KB SRAM)
   does not fit on parts like STM32L0/G0 with 4–32 KB SRAM, where the
   AmorE client comfortably fits.

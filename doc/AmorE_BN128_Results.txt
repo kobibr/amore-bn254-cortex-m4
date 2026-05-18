@@ -340,7 +340,7 @@
   ELF total             21.7 KB         156.7 KB         AmorE: 7.2x smaller
 
   In addition, AmorE provides:
-    - Input privacy: server never sees plaintext (A,B)
+    - Pairing-library avoidance: client needs no pairing implementation
     - Cheating detection: malicious results rejected with prob ~ 1
     - Feasibility on parts where RELIC does not fit (e.g. STM32L0/G0
       with 4-32 KB SRAM)
@@ -350,13 +350,13 @@
   The right framing for AmorE on STM32F4 is therefore:
 
       "Trade ~1.5x speed (vs in-place C) for 33x less RAM,
-       3x less Flash, input privacy, and the ability to outsource
-       pairing computation to an untrusted helper."
+       3x less Flash, and the ability to outsource pairing
+       computation to an untrusted helper with verifiable results."
 
   On a Cortex-M4 with 192 KB SRAM, this trade-off is not compelling
   for speed-sensitive applications. It becomes compelling on:
     - smaller MCUs where 100 KB of pairing-state cannot fit
-    - settings where input privacy is required
+    - settings where memory footprint is critical (no pairing library)
     - settings where battery cost of computation matters more than
       latency
 
@@ -376,8 +376,11 @@
 
   The contribution of AmorE is therefore best characterized as
   ENABLING pairing-based cryptography on memory-constrained MCUs
-  where a full pairing library does not fit, AND on supplying input
-  privacy to the outsourced computation.  It is not a speed
-  optimization for parts where RELIC already fits comfortably.
+  where a full pairing library does not fit, with verifiable
+  outsourcing of the pairing computation. AmorE is a public-input
+  protocol (paper Section 1): pairing arguments are sent in the clear;
+  the protocol's security property is verifiability of the server's
+  response, not input confidentiality. It is not a speed optimization
+  for parts where RELIC already fits comfortably.
 
 ==========================================================================

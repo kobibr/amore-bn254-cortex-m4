@@ -26,6 +26,9 @@ BUILD_DIR_BASE="build"
 LOG_DIR="logs"
 FLASH=true
 CURVE="${CURVE:-BLS12_381}"   # BN254 or BLS12_381
+FLASH_VIA="${FLASH_VIA:-auto}"
+PPK2_PORT="${PPK2_PORT:-/dev/ttyACM0}"
+PPK2_VOLTAGE_MV="${PPK2_VOLTAGE_MV:-3300}"
 
 # ── GDB selection: prefer gdb-multiarch, fall back to arm-none-eabi-gdb ────
 if command -v gdb-multiarch &>/dev/null; then
@@ -42,9 +45,16 @@ for arg in "$@"; do
         --baud=*)    BAUD="${arg#*=}" ;;
         --log-dir=*) LOG_DIR="${arg#*=}" ;;
         --no-flash)  FLASH=false ;;
-        --curve=*)   CURVE="${arg#*=}" ;;
+        --curve=*)      CURVE="${arg#*=}" ;;
+        --flash-via=*)  FLASH_VIA="${arg#*=}" ;;
+        --ppk2-port=*)  PPK2_PORT="${arg#*=}" ;;
     esac
 done
+
+case "${FLASH_VIA}" in
+    auto|stlink|rpi) ;;
+    *) echo "Error: --flash-via must be auto/stlink/rpi" >&2; exit 1 ;;
+esac
 
 # ── Derive curve-specific paths ──────────────────────────────────────────────
 case "${CURVE}" in
@@ -95,11 +105,151 @@ cleanup() {
         kill "$SERVER_PID" 2>/dev/null || true
         wait "$SERVER_PID" 2>/dev/null || true
     fi
+    # Stop PPK2 if running
+    type ppk2_stop &>/dev/null && ppk2_stop 2>/dev/null || true
     if [[ $exit_code -ne 0 ]]; then
         err "Script exited with code $exit_code"
     fi
 }
 trap cleanup EXIT
+
+
+# ═══════════════════════════════════════════════════════════════
+# RPi GPIO SWD support — added 2026-05-20
+# ═══════════════════════════════════════════════════════════════
+
+detect_stlink() {
+    if command -v st-info &>/dev/null; then
+        if st-info --probe 2>/dev/null | grep -qi "Found"; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+detect_rpi_swd() {
+    [[ -z "${RPI_HOST:-}" ]] && return 1
+    ssh -o ConnectTimeout=3 -o BatchMode=yes "${RPI_USER}@${RPI_HOST}" \
+        'which openocd && test -f /home/pi/rpi_swd.cfg' &>/dev/null
+}
+
+resolve_flash_method() {
+    case "${FLASH_VIA}" in
+        stlink) detect_stlink && echo "stlink" || echo "missing" ;;
+        rpi)    detect_rpi_swd && echo "rpi_swd" || echo "missing" ;;
+        auto)
+            if detect_stlink; then
+                echo "stlink"
+            elif detect_rpi_swd; then
+                echo "rpi_swd"
+            else
+                echo "missing"
+            fi
+            ;;
+    esac
+}
+
+ensure_rpi_swd_config() {
+    local rpi_cfg='/home/pi/rpi_swd.cfg'
+    if ssh -o BatchMode=yes "${RPI_USER}@${RPI_HOST}" "test -f ${rpi_cfg}" 2>/dev/null; then
+        return 0
+    fi
+    info "Uploading rpi_swd.cfg to RPi..."
+    local tmp_cfg=$(mktemp)
+    cat > "${tmp_cfg}" << CFGEOF
+adapter driver bcm2835gpio
+bcm2835gpio peripheral_base 0x3F000000
+bcm2835gpio speed_coeffs 194938 48
+adapter gpio swclk 25
+adapter gpio swdio 24
+adapter gpio srst 18
+transport select swd
+reset_config srst_only srst_push_pull srst_nogate
+adapter speed 500
+source [find target/stm32f4x.cfg]
+CFGEOF
+    scp -q "${tmp_cfg}" "${RPI_USER}@${RPI_HOST}:${rpi_cfg}"
+    rm -f "${tmp_cfg}"
+    ok "Config uploaded"
+}
+
+PPK2_KEEPALIVE_PID=""
+
+ppk2_start() {
+    info "Starting PPK2 source mode @ ${PPK2_VOLTAGE_MV}mV..."
+    pkill -f "ppk2_keep_alive" 2>/dev/null || true
+    sleep 0.5
+
+    # Fixed path - NOT mktemp - so the file persists
+    PPK2_TMP_PY=/tmp/ppk2_keep_alive_$$.py
+    cat > "${PPK2_TMP_PY}" << PYEOF_INNER
+import sys, time, signal
+from ppk2_api.ppk2_api import PPK2_API
+
+def shutdown(sig, frame):
+    try:
+        ppk2.toggle_DUT_power("OFF")
+        print("[PPK2] OFF", flush=True)
+    except: pass
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, shutdown)
+signal.signal(signal.SIGINT, shutdown)
+
+ppk2 = PPK2_API("${PPK2_PORT}", timeout=2, write_timeout=2)
+ppk2.get_modifiers()
+ppk2.set_source_voltage(${PPK2_VOLTAGE_MV})
+ppk2.use_source_meter()
+ppk2.toggle_DUT_power("ON")
+print("[PPK2] ON", flush=True)
+
+while True:
+    time.sleep(2)
+PYEOF_INNER
+
+    # Verify file exists before invoking python
+    if [[ ! -f "${PPK2_TMP_PY}" ]]; then
+        err "Failed to create PPK2 keep-alive script at ${PPK2_TMP_PY}"
+        return 1
+    fi
+
+    /home/kobi/amore-energy-study/.venv/bin/python3 "${PPK2_TMP_PY}" &
+    PPK2_KEEPALIVE_PID=$!
+    sleep 3
+    
+    # Verify the process is alive
+    if ! kill -0 "${PPK2_KEEPALIVE_PID}" 2>/dev/null; then
+        err "PPK2 keep-alive process died"
+        return 1
+    fi
+    
+    ok "PPK2 powering STM32 (PID ${PPK2_KEEPALIVE_PID})"
+}
+
+ppk2_stop() {
+    if [[ -n "${PPK2_KEEPALIVE_PID:-}" ]] && kill -0 "${PPK2_KEEPALIVE_PID}" 2>/dev/null; then
+        info "Stopping PPK2..."
+        kill -TERM "${PPK2_KEEPALIVE_PID}" 2>/dev/null
+        wait "${PPK2_KEEPALIVE_PID}" 2>/dev/null || true
+        PPK2_KEEPALIVE_PID=""
+    fi
+}
+
+flash_via_rpi() {
+    local elf_file="$1"
+    local elf_name=$(basename "${elf_file}")
+    local rpi_elf="/home/pi/${elf_name}"
+    
+    ensure_rpi_swd_config
+    
+    info "Transferring ELF to RPi: ${elf_name}"
+    scp -q "${elf_file}" "${RPI_USER}@${RPI_HOST}:${rpi_elf}"
+    
+    info "Flashing via RPi GPIO SWD..."
+    ssh "${RPI_USER}@${RPI_HOST}" \
+        "sudo openocd -f /home/pi/rpi_swd.cfg -c 'init; reset halt; program ${rpi_elf} verify reset exit'" 2>&1
+}
+
 
 # =============================================================================
 #  Step 1 — Build
@@ -133,36 +283,74 @@ fi
 ok "Build complete: ${ELF}"
 
 # =============================================================================
-#  Step 2 — Flash STM32
+#  Step 2 — Flash STM32 (auto-detect ST-LINK USB vs RPi GPIO SWD)
 # =============================================================================
 if $FLASH; then
     head "══ STEP 2: Flash ══"
-    if ! command -v st-flash &>/dev/null; then
-        err "st-flash not found — install stlink-tools"
-        exit 1
-    fi
-
-    FLASH_BIN="${SCRIPT_DIR}/${BUILD_DIR}/${TARGET_NAME}.bin"
-
-    info "Detaching cdc_acm so st-flash can access ST-Link..."
-    sudo modprobe -r cdc_acm 2>/dev/null || true
-    sleep 0.5
-
-    info "Running: make flash"
-    if ! cmake --build "${BUILD_DIR}" --target flash 2>&1; then
-        info "Retrying with sudo..."
-        if ! sudo cmake --build "${BUILD_DIR}" --target flash 2>&1; then
-            sudo modprobe cdc_acm 2>/dev/null || true
-            err "Flash failed — check USB connection: st-info --probe"
-            exit 1
+    
+    # Discover RPi early (used for both flash and server)
+    if [[ -z "${RPI_HOST:-}" ]]; then
+        info "Discovering RPi..."
+        mdns_output="$(getent hosts raspberrypi.local 2>/dev/null || true)"
+        if [[ -n "$mdns_output" ]]; then
+            RPI_HOST="$(echo "$mdns_output" | awk '{print $1}' | sed -n 1p)"
         fi
     fi
-
-    info "Reloading cdc_acm (restores /dev/ttyACM0)..."
-    sudo modprobe cdc_acm 2>/dev/null || true
+    
+    FLASH_METHOD="$(resolve_flash_method)"
+    info "Flash method requested: ${FLASH_VIA}"
+    info "Flash method resolved : ${FLASH_METHOD}"
+    
+    case "${FLASH_METHOD}" in
+        stlink)
+            if ! command -v st-flash &>/dev/null; then
+                err "st-flash not found — install stlink-tools"
+                exit 1
+            fi
+            FLASH_BIN="${SCRIPT_DIR}/${BUILD_DIR}/${TARGET_NAME}.bin"
+            info "Detaching cdc_acm so st-flash can access ST-Link..."
+            sudo modprobe -r cdc_acm 2>/dev/null || true
+            sleep 0.5
+            info "Running: make flash via ST-LINK USB"
+            if ! cmake --build "${BUILD_DIR}" --target flash 2>&1; then
+                info "Retrying with sudo..."
+                if ! sudo cmake --build "${BUILD_DIR}" --target flash 2>&1; then
+                    sudo modprobe cdc_acm 2>/dev/null || true
+                    err "Flash failed — check USB: st-info --probe"
+                    exit 1
+                fi
+            fi
+            sudo modprobe cdc_acm 2>/dev/null || true
+            sleep 1
+            ok "Flash done via ST-LINK USB"
+            ;;
+        rpi_swd)
+            if [[ -z "${RPI_HOST:-}" ]]; then
+                err "RPi not reachable for SWD flash"
+                exit 1
+            fi
+            ppk2_start
+            flash_output=$(flash_via_rpi "${ELF}" 2>&1)
+            echo "${flash_output}" | tail -30
+            if echo "${flash_output}" | grep -q 'Programming Finished' && \
+               echo "${flash_output}" | grep -q 'Verified OK'; then
+                ok "Flash done via RPi GPIO SWD"
+            else
+                err "Flash via RPi SWD failed"
+                ppk2_stop
+                exit 1
+            fi
+            ;;
+        missing)
+            err "No flash method available"
+            err "  - ST-LINK USB: not detected"
+            err "  - RPi GPIO SWD: not configured"
+            exit 1
+            ;;
+    esac
+    
     sleep 1
-    ok "Flash done — STM32 booting (30s to connect to server)"
-    sleep 1
+    info "STM32 booting"
 else
     info "Skipping flash (--no-flash)"
 fi
@@ -257,7 +445,7 @@ RPI_SERVER_PATH="${RPI_SERVER_PATH:-~/amore-bn254-cortex-m4/rpi}"
 info "Using server.py from ${RPI_SERVER_PATH} on the RPi"
 
 ssh "${RPI_USER}@${RPI_HOST}" \
-    "python3 ${RPI_SERVER_PATH}/server.py --port ${RPI_PORT_DEV} --baud ${BAUD} --honest-rounds 61" \
+    "python3 ${RPI_SERVER_PATH}/server.py --port ${RPI_PORT_DEV} --baud ${BAUD} --honest-rounds ${HONEST_ROUNDS:-61}" \
     2>&1 | tee "${SERVER_LOG}" &
 SERVER_PID=$!
 info "Server running on RPi (local PID=${SERVER_PID}) — waiting for all rounds..."
@@ -299,16 +487,21 @@ fi
 ok "ELF exists: ${ELF}"
 echo ""
 
+# Build OpenOCD invocation based on flash method used
+if [[ "${FLASH_METHOD:-}" == "rpi_swd" ]] && [[ -n "${RPI_HOST:-}" ]]; then
+    info "Using RPi as remote OpenOCD for GDB"
+    OPENOCD_INVOCATION="ssh ${RPI_USER}@${RPI_HOST} 'sudo openocd -f /home/pi/rpi_swd.cfg -c \"gdb_port pipe; log_output /dev/null\"'"
+else
+    OPENOCD_INVOCATION="openocd -f interface/stlink.cfg -f target/stm32f4x.cfg -c \"gdb_port pipe; log_output /dev/null\""
+fi
+
 GDB_SCRIPT_FILE=$(mktemp /tmp/amore_gdb_XXXX.gdb)
 
 cat > "${GDB_SCRIPT_FILE}" << GDBEOF
 set pagination off
 set print pretty on
 
-target extended-remote | openocd \\
-    -f interface/stlink.cfg \\
-    -f target/stm32f4x.cfg \\
-    -c "gdb_port pipe; log_output /dev/null"
+target extended-remote | ${OPENOCD_INVOCATION}
 
 file ${ELF}
 

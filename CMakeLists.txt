@@ -341,3 +341,47 @@ if(ST_FLASH)
         )
     endif()
 endif()
+
+# ─────────────────────────────────────────────────────────────────────
+# verify_binary target — fail loudly if optimization level regressed
+# (build/X/CMakeCache.txt with empty CMAKE_BUILD_TYPE → -O2 → broken)
+# Run with: cmake --build <build_dir> --target verify_binary
+# ─────────────────────────────────────────────────────────────────────
+if(CURVE STREQUAL "BLS12_381")
+    set(EXPECTED_TEXT_SIZE 22084)
+    set(EXPECTED_BSS_SIZE  35984)
+    set(EXPECTED_BIN_SIZE  22104)
+
+    add_custom_target(verify_binary
+        COMMAND ${CMAKE_COMMAND} -E echo "Verifying binary fingerprint..."
+        COMMAND arm-none-eabi-size --format=berkeley $<TARGET_FILE:amore_bls12_381.elf>
+        COMMAND ${CMAKE_COMMAND} -E echo "Expected: text=${EXPECTED_TEXT_SIZE} (Release/-O3 build)"
+        COMMAND bash -c "
+            T=$$(arm-none-eabi-size --format=berkeley $<TARGET_FILE:amore_bls12_381.elf> | awk 'NR==2 {print $$1}');
+            B=$$(arm-none-eabi-size --format=berkeley $<TARGET_FILE:amore_bls12_381.elf> | awk 'NR==2 {print $$3}');
+            if [ \"$$T\" -ne ${EXPECTED_TEXT_SIZE} ]; then
+                echo '  ❌ FAIL: .text size mismatch'
+                echo '     got      = '$$T' bytes'
+                echo '     expected = ${EXPECTED_TEXT_SIZE} bytes (Release/-O3 build)'
+                echo '     If got is ~14340, CMakeCache has empty CMAKE_BUILD_TYPE.'
+                echo '     Fix: rm -rf build/CURVE/ and rebuild with -DCMAKE_BUILD_TYPE=Release'
+                exit 1
+            fi
+            if [ \"$$B\" -ne ${EXPECTED_BSS_SIZE} ]; then
+                echo '  ❌ FAIL: .bss size mismatch'
+                echo '     got      = '$$B' bytes'
+                echo '     expected = ${EXPECTED_BSS_SIZE} bytes'
+                exit 1
+            fi
+            echo '  ✓ binary fingerprint OK (.text=${EXPECTED_TEXT_SIZE}, .bss=${EXPECTED_BSS_SIZE})'
+        "
+        DEPENDS amore_bls12_381.elf
+        COMMENT "Verify ELF size/section fingerprint matches expected Release/-O3 build"
+    )
+endif()
+
+# BN254 equivalent
+if(CURVE STREQUAL "BN254")
+    # TODO: populate after first verified BN254 -O3 build
+    message(STATUS "verify_binary target not yet defined for BN254 — populate when verified")
+endif()

@@ -261,6 +261,12 @@ mkdir -p "${LOG_DIR}"
 BUILD_LOG="${LOG_DIR}/build_${STAMP}.log"
 info "Build log: ${BUILD_LOG}"
 
+# Force clean reconfigure — stale CMakeCache silently drops BUILD_TYPE
+
+
+rm -rf "${BUILD_DIR}"
+
+
 cmake -S . -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE=Release -DCURVE="${CURVE}" \
     2>&1 | tee "${BUILD_LOG}" | tail -5
 

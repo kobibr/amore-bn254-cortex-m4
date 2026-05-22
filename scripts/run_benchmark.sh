@@ -83,7 +83,59 @@ RED='\033[91m'; GRN='\033[92m'; YLW='\033[93m'
 BLU='\033[94m'; CYN='\033[96m'; RST='\033[0m'; BOLD='\033[1m'
 ok()   { echo -e "${GRN}✓${RST} $*"; }
 err()  { echo -e "${RED}✗${RST} $*"; }
-info() { echo -e "${CYN}  $*${RST}"; }
+info() { echo -e "${CYN}
+# ─────────────────────────────────────────────────────────────────
+# RPi pre-flight checks (added 2026-05-22)
+# ─────────────────────────────────────────────────────────────────
+rpi_preflight() {
+    local rpi_host=$1
+    local rpi_user=${2:-pi}
+
+    info "RPi pre-flight: ${rpi_user}@${rpi_host}"
+
+    # 1. SSH reachable
+    if ! timeout 5 ssh -o ConnectTimeout=3 -o BatchMode=yes ${rpi_user}@${rpi_host} 'echo ok' >/dev/null 2>&1; then
+        err "RPi SSH unreachable: ${rpi_user}@${rpi_host}"
+        return 1
+    fi
+
+    # 2. server.py present
+    if ! ssh ${rpi_user}@${rpi_host} 'test -f /home/pi/amore-bn254-cortex-m4/rpi/server.py' 2>/dev/null; then
+        err "server.py not found on RPi"
+        return 1
+    fi
+
+    # 3. /dev/ttyAMA0 exists
+    if ! ssh ${rpi_user}@${rpi_host} 'test -e /dev/ttyAMA0' 2>/dev/null; then
+        err "/dev/ttyAMA0 missing on RPi"
+        return 1
+    fi
+
+    # 4. No stale processes holding the port
+    local stale=$(ssh ${rpi_user}@${rpi_host} 'sudo lsof /dev/ttyAMA0 2>/dev/null | grep -v "^COMMAND" | wc -l' 2>/dev/null)
+    if [ "${stale:-0}" -gt 0 ]; then
+        info "  killing $stale stale processes on /dev/ttyAMA0..."
+        ssh ${rpi_user}@${rpi_host} 'sudo fuser -k /dev/ttyAMA0 2>/dev/null' || true
+        sleep 1
+    fi
+
+    # 5. py_ecc importable
+    if ! ssh ${rpi_user}@${rpi_host} 'python3 -c "from py_ecc.bls12_381 import pairing" 2>/dev/null'; then
+        err "py_ecc.bls12_381 not importable on RPi"
+        err "  Fix: ssh ${rpi_user}@${rpi_host} 'pip3 install py_ecc --break-system-packages'"
+        return 1
+    fi
+
+    # 6. UART drain — clear stale buffer
+    ssh ${rpi_user}@${rpi_host} '
+        sudo stty -F /dev/ttyAMA0 921600 raw -echo cs8 -parenb -cstopb
+        sudo timeout 1 cat /dev/ttyAMA0 > /dev/null 2>&1 || true
+    ' 2>/dev/null
+
+    ok "RPi pre-flight OK"
+    return 0
+}
+  $*${RST}"; }
 head() { echo -e "\n${BOLD}${BLU}$*${RST}"; }
 
 # ── Helper: take first line of stdin/argument without using `head -1`

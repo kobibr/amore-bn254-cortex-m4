@@ -83,9 +83,15 @@ RED='\033[91m'; GRN='\033[92m'; YLW='\033[93m'
 BLU='\033[94m'; CYN='\033[96m'; RST='\033[0m'; BOLD='\033[1m'
 ok()   { echo -e "${GRN}✓${RST} $*"; }
 err()  { echo -e "${RED}✗${RST} $*"; }
-info() { echo -e "${CYN}
+info() { echo -e "${CYN}  $*${RST}"; }
+head() { echo -e "\n${BOLD}${BLU}$*${RST}"; }
+
 # ─────────────────────────────────────────────────────────────────
 # RPi pre-flight checks (added 2026-05-22)
+# Catches failure modes from 2026-05-22 debug session:
+#   - py_ecc missing after RPi reflash
+#   - stale processes holding /dev/ttyAMA0
+#   - stale UART RX buffer
 # ─────────────────────────────────────────────────────────────────
 rpi_preflight() {
     local rpi_host=$1
@@ -94,49 +100,51 @@ rpi_preflight() {
     info "RPi pre-flight: ${rpi_user}@${rpi_host}"
 
     # 1. SSH reachable
-    if ! timeout 5 ssh -o ConnectTimeout=3 -o BatchMode=yes ${rpi_user}@${rpi_host} 'echo ok' >/dev/null 2>&1; then
+    if ! timeout 5 ssh -o ConnectTimeout=3 -o BatchMode=yes "${rpi_user}@${rpi_host}" 'echo ok' >/dev/null 2>&1; then
         err "RPi SSH unreachable: ${rpi_user}@${rpi_host}"
         return 1
     fi
 
     # 2. server.py present
-    if ! ssh ${rpi_user}@${rpi_host} 'test -f /home/pi/amore-bn254-cortex-m4/rpi/server.py' 2>/dev/null; then
-        err "server.py not found on RPi"
+    if ! ssh "${rpi_user}@${rpi_host}" 'test -f /home/pi/amore-bn254-cortex-m4/rpi/server.py' 2>/dev/null; then
+        err "server.py not found at /home/pi/amore-bn254-cortex-m4/rpi/server.py"
         return 1
     fi
 
     # 3. /dev/ttyAMA0 exists
-    if ! ssh ${rpi_user}@${rpi_host} 'test -e /dev/ttyAMA0' 2>/dev/null; then
+    if ! ssh "${rpi_user}@${rpi_host}" 'test -e /dev/ttyAMA0' 2>/dev/null; then
         err "/dev/ttyAMA0 missing on RPi"
         return 1
     fi
 
-    # 4. No stale processes holding the port
-    local stale=$(ssh ${rpi_user}@${rpi_host} 'sudo lsof /dev/ttyAMA0 2>/dev/null | grep -v "^COMMAND" | wc -l' 2>/dev/null)
+    # 4. Kill any stale processes holding the port
+    local stale
+    stale=$(ssh "${rpi_user}@${rpi_host}" 'sudo fuser /dev/ttyAMA0 2>/dev/null | wc -w' 2>/dev/null || echo 0)
     if [ "${stale:-0}" -gt 0 ]; then
-        info "  killing $stale stale processes on /dev/ttyAMA0..."
-        ssh ${rpi_user}@${rpi_host} 'sudo fuser -k /dev/ttyAMA0 2>/dev/null' || true
+        info "  killing ${stale} stale processes on /dev/ttyAMA0..."
+        ssh "${rpi_user}@${rpi_host}" 'sudo fuser -k /dev/ttyAMA0 2>/dev/null' || true
         sleep 1
     fi
 
-    # 5. py_ecc importable
-    if ! ssh ${rpi_user}@${rpi_host} 'python3 -c "from py_ecc.bls12_381 import pairing" 2>/dev/null'; then
-        err "py_ecc.bls12_381 not importable on RPi"
-        err "  Fix: ssh ${rpi_user}@${rpi_host} 'pip3 install py_ecc --break-system-packages'"
-        return 1
+    # 5. py_ecc importable (auto-install if missing)
+    if ! ssh "${rpi_user}@${rpi_host}" 'python3 -c "from py_ecc.bls12_381 import pairing" 2>/dev/null'; then
+        info "  py_ecc.bls12_381 missing — auto-installing..."
+        if ! ssh "${rpi_user}@${rpi_host}" 'pip3 install py_ecc --break-system-packages 2>&1' >/dev/null; then
+            err "py_ecc auto-install failed"
+            return 1
+        fi
     fi
 
-    # 6. UART drain — clear stale buffer
-    ssh ${rpi_user}@${rpi_host} '
-        sudo stty -F /dev/ttyAMA0 921600 raw -echo cs8 -parenb -cstopb
+    # 6. Drain UART RX buffer + reset baud
+    ssh "${rpi_user}@${rpi_host}" '
+        sudo stty -F /dev/ttyAMA0 921600 raw -echo cs8 -parenb -cstopb 2>/dev/null
         sudo timeout 1 cat /dev/ttyAMA0 > /dev/null 2>&1 || true
     ' 2>/dev/null
 
     ok "RPi pre-flight OK"
     return 0
 }
-  $*${RST}"; }
-head() { echo -e "\n${BOLD}${BLU}$*${RST}"; }
+
 
 # ── Helper: take first line of stdin/argument without using `head -1`
 #     Avoids SIGPIPE issues with pipefail
@@ -484,6 +492,13 @@ if [[ -z "${RPI_HOST:-}" ]]; then
 else
     info "Using manual override: RPI_HOST=${RPI_HOST}"
 fi
+
+# Pre-flight: verify RPi is in a clean state BEFORE launching server.py
+if ! rpi_preflight "${RPI_HOST}" "${RPI_USER}"; then
+    err "RPi pre-flight failed — aborting"
+    exit 1
+fi
+
 
 RPI_PORT_DEV="${RPI_PORT:-/dev/ttyAMA0}"
 

@@ -180,7 +180,13 @@ trap cleanup EXIT
 
 detect_stlink() {
     if command -v st-info &>/dev/null; then
-        if st-info --probe 2>/dev/null | grep -qi "Found"; then
+        # st-info --probe prints "Found N stlink programmers" where N is a count.
+        # "Found 0" means NO ST-LINK present — only count >= 1 means a device.
+        local probe_out
+        probe_out=$(st-info --probe 2>/dev/null)
+        local count
+        count=$(echo "$probe_out" | grep -oE "Found [0-9]+ stlink" | grep -oE "[0-9]+" | head -1)
+        if [ -n "$count" ] && [ "$count" -gt 0 ]; then
             return 0
         fi
     fi

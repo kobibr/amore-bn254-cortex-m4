@@ -71,15 +71,21 @@ static uint32_t rng_u32(void) {
 
 static void sample_scalar_fq(Fq r) {
     uint32_t raw[8];
+    int ge;  /* ge=1 means raw >= q; declared outside do-block for scope */
     do {
         for (int i = 0; i < 8; i++) raw[i] = rng_u32();
         /* BLS12-381's q[7] = 0x73eda753 (31 bits). Mask to 31 bits so
-         * rejection sampling actually triggers when raw >= q. The previous
-         * mask 0x3FFFFFFFu (30 bits) was a leftover from BN254 (q[7] of
-         * different shape) and made the rejection loop dead code. */
+         * rejection sampling actually triggers when raw >= q. */
         raw[7] &= 0x7FFFFFFFu;
-    } while (raw[7] > CURVE_Q_FQ[7] ||
-             (raw[7] == CURVE_Q_FQ[7] && raw[0] == 0));
+        /* Full limb-by-limb comparison: reject if raw >= q.
+         * Previous version only checked limbs [7] and [0], leaving
+         * limbs [1-6] unconstrained — introduces a small modular bias. */
+        ge = 0;
+        for (int i = 7; i >= 0; i--) {
+            if (raw[i] > CURVE_Q_FQ[i]) { ge = 1; break; }
+            if (raw[i] < CURVE_Q_FQ[i]) { ge = 0; break; }
+        }
+    } while (ge);
     uint32_t nz = 0;
     for (int i = 0; i < 8; i++) nz |= raw[i];
     if (!nz) raw[0] = 1;
@@ -87,10 +93,13 @@ static void sample_scalar_fq(Fq r) {
 }
 
 static int sample_short_scalar(uint32_t out[8], uint32_t phi) {
+    /* out[] is exactly 8 uint32_t = 256 bits.
+     * phi must be <= 256 or we corrupt the stack. */
+    if (phi > 256) phi = 256;
     memset(out, 0, 32);
     uint32_t full = phi / 32, rem = phi % 32;
     for (uint32_t i = 0; i < full; i++) out[i] = rng_u32();
-    if (rem) out[full] = rng_u32() & ((1u << rem) - 1u);
+    if (rem && full < 8) out[full] = rng_u32() & ((1u << rem) - 1u);
     uint32_t nz = 0;
     for (int i = 0; i < 8; i++) nz |= out[i];
     if (!nz) out[0] = 1;
@@ -212,9 +221,11 @@ int AmorE_Verify(const AmorE_SK *sk, const AmorE_Sec *sec, const AmorE_Out *out)
  * ----------------------------------------------------------------------- */
 /* G1 generator bytes — populated at runtime from CURVE_G1X/Y in the const header */
 static uint8_t G1GEN_BYTES[96];   /* filled once in RunBenchmark */
-/* G1 generator now populated at runtime from CURVE_G1X/Y */
+/* G2 generator bytes — populated at runtime from CURVE_G2X/Y in the const header */
 static uint8_t g_g2gen_bytes[192];   /* filled once in RunBenchmark */
 static uint8_t uart_buf[1280];        /* receive buffer (gamma+rho = 1152, +headroom) */
+_Static_assert(sizeof(uart_buf) >= AMORE_PROTO_IN_BYTES,
+               "uart_buf must be at least AMORE_PROTO_IN_BYTES (1152)");
 
 /* -----------------------------------------------------------------------
  * Inline helpers for the benchmark loop
@@ -253,7 +264,7 @@ void AmorE_RunBenchmark(AmorE_BenchResults *res) {
         if (rc != 0) {
             error_set(ERR_UART_TIMEOUT, 0, 0);
             TRIG_ALL_LO();
-        res->status = 0xDEAD0001u;
+            res->status = 0xDEAD0001u;
             return;
         }
         /* byte 0: 0=honest, 1=malicious (informational only) */

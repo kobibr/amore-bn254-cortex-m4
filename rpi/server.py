@@ -139,9 +139,6 @@ def recv_packet(port: serial.Serial, timeout_s: float = 30.0) -> tuple[int, byte
         elif state == 1 and b[0] == 0xAA:
             # Stay in state=1 — this 0xAA could be the real start
             pass
-        elif b[0] == 0xAA:
-            # Recovery: start tracking from this 0xAA
-            state = 1
         else:
             state = 0
     else:

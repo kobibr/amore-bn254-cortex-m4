@@ -21,16 +21,20 @@ void g1_neg(G1Point *r, const G1Point *a) {
     fp_copy(r->Z, a->Z);
 }
 
-/* Jacobian doubling (a=0, i.e. BN128):
+/* Jacobian doubling for short-Weierstrass curve with a=0:
  *   A = X^2,  B = Y^2,  C = B^2
  *   D = 2*((X+B)^2 - A - C)
  *   E = 3*A
  *   X' = E^2 - 2*D
  *   Y' = E*(D - X') - 8*C
  *   Z' = 2*Y*Z
- * Ref: hyperelliptic.org EFD/g1p/auto-shortw-jacobian-0 #doubling-dbl-2009-l */
+ * Ref: hyperelliptic.org EFD/g1p/auto-shortw-jacobian-0 #doubling-dbl-2009-l
+ *
+ * Bug #6 fix (comment cleanup): previously labeled "BN128", but this file
+ * is part of the BLS12-381 build. The formula applies to any curve with
+ * a=0 (BN family, BLS family, BLS12-381 here). */
 void g1_dbl(G1Point *r, const G1Point *a) {
-    /* Jacobian doubling for a=0 (BN128): dbl-2009-l
+    /* dbl-2009-l, applies to short-Weierstrass curves with a=0:
      * https://hyperelliptic.org/EFD/g1p/auto-shortw-jacobian-0.html#doubling-dbl-2009-l */
     if (g1_is_inf(a)) { g1_inf(r); return; }
     Fp A, B, C, D, E, F;

@@ -65,15 +65,22 @@ int uart_recv_packet(uint8_t *cmd, uint8_t *data, uint16_t *len,
     }
     uint8_t hdr[3];
     if (uart_recv(hdr, 3, timeout_ms) != 0) return -2;  /* cmd, len_lo, len_hi */
-    *cmd = hdr[0];
+    /* Bug #8 fix: previously `*cmd = hdr[0]` was written here, BEFORE the
+     * plen-overflow check. Callers that didn't strictly check the return
+     * code could observe a stale/garbage *cmd from a packet that was
+     * actually rejected. Defer all output-pointer writes until every
+     * validation has passed. */
     uint16_t plen = (uint16_t)hdr[1] | ((uint16_t)hdr[2] << 8);
     if (plen > max_len) return -3;
-    *len = plen;
     if (plen > 0 && uart_recv(data, plen, timeout_ms) != 0) return -4;
     uint8_t crc_recv;
     if (uart_recv(&crc_recv, 1, timeout_ms) != 0) return -5;
     /* Verify CRC */
     uint8_t crc = hdr[0] ^ hdr[1] ^ hdr[2];
     for (uint16_t i = 0; i < plen; i++) crc ^= data[i];
-    return (crc == crc_recv) ? 0 : -6;
+    if (crc != crc_recv) return -6;
+    /* All checks passed — now publish outputs atomically. */
+    *cmd = hdr[0];
+    *len = plen;
+    return 0;
 }

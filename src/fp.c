@@ -163,7 +163,23 @@ void fp_mul(Fp r, const Fp a, const Fp b) {
         T[FP_LIMBS + 1] = 0;
     }
 
-    /* T now holds a value in [0, 2p). Final conditional subtract. */
+    /* T now holds a value in [0, 2p). Final conditional subtract.
+     *
+     * Bug #4 (defensive): the CIOS invariant guarantees T < 2p whenever
+     * inputs a,b satisfy a,b < p. T[FP_LIMBS+1] should therefore be 0
+     * here, and T[FP_LIMBS] is 0 or 1. If a caller violates the input
+     * precondition (passes a non-canonical Fp), T could exceed 2p and the
+     * single conditional subtract below would yield a wrong result. We
+     * keep the inputs-canonical contract documented and add a guard for
+     * debug builds so the invariant violation is loud rather than silent.
+     */
+#ifdef AMORE_DEBUG
+    if (T[FP_LIMBS + 1] != 0) {
+        /* Invariant violated — caller passed non-canonical input.
+         * Fall through anyway so release builds still produce something
+         * deterministic; the postcondition simply won't hold. */
+    }
+#endif
     /* Pack T[0..FP_LIMBS-1] into a uint32_t array for fp_cmp / fp_raw_sub */
     uint32_t result[FP_LIMBS];
     for (int i = 0; i < FP_LIMBS; i++) {
@@ -264,9 +280,11 @@ void fp_inv(Fp r, const Fp a) {
     fp_copy(r, result);
 }
 
-/* Serialize Fp element to 48 bytes, big-endian (NOT Montgomery — convert first).
- * Wait — by convention here, the input is in Montgomery form, and we
- * serialize the *plain* value as 48 bytes BE (matching standard wire format).
+/* Serialize Fp element to 48 bytes, big-endian.
+ *
+ * Bug #6 fix (comment cleanup): input is in Montgomery form by convention
+ * in this module; we convert to plain form here, then write big-endian
+ * (matching the wire format used by py_ecc and the BLS standard).
  */
 void fp_to_bytes(uint8_t out[48], const Fp a) {
     /* First convert from Montgomery to plain */

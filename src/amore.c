@@ -48,6 +48,21 @@ static void error_set(uint32_t code, uint8_t batch, uint16_t round) {
 
 /* -----------------------------------------------------------------------
  * PRNG (xoshiro128**, seeded from DWT+tick)
+ *
+ * !! WARNING — INSECURE BENCHMARK RNG, NOT FOR PRODUCTION KEYS !!
+ *
+ * Bug #5 (documented, not fixed in code): rng_seed() draws ~16-20 bits of
+ * effective entropy at best:
+ *   - cyc() runs right after DWT init (CYCCNT≈few thousand, narrow range)
+ *   - HAL_GetTick() is ~0-few ms at startup (narrow range)
+ *   - rng_s[1..3] are deterministic XOR functions of rng_s[0], so the
+ *     total state entropy is dominated by rng_s[0].
+ *
+ * For the energy-benchmark use case this is acceptable (and even useful
+ * for reproducibility across replicas). For deploying AmorE in a real
+ * security setting, replace this with a true hardware RNG (STM32F4 RNG
+ * peripheral or ADC-noise pool). Until then, do NOT treat sk->s or
+ * sec->r values produced here as cryptographically private.
  * ----------------------------------------------------------------------- */
 static uint32_t rng_s[4];
 
@@ -94,8 +109,18 @@ static void sample_scalar_fq(Fq r) {
 
 static int sample_short_scalar(uint32_t out[8], uint32_t phi) {
     /* out[] is exactly 8 uint32_t = 256 bits.
-     * phi must be <= 256 or we corrupt the stack. */
+     * phi must be <= 256 or we corrupt the stack.
+     *
+     * Bug #3 fix: phi=0 used to leave out=[0,...,0], then the "if (!nz)"
+     * guard below would set out[0]=1, but the function returned nbits=0.
+     * Callers using nbits in `g2_scalar_mul` / `fp12_exp` would then
+     * iterate zero times and silently treat the scalar as 0 — even though
+     * the buffer says 1. AMORE_PHI is currently never 0, so this is a
+     * defensive fix rather than an active bug. Clamp phi to >= 1 so the
+     * returned nbits matches the actual scalar in the buffer.
+     */
     if (phi > 256) phi = 256;
+    if (phi < 1)   phi = 1;
     memset(out, 0, 32);
     uint32_t full = phi / 32, rem = phi % 32;
     for (uint32_t i = 0; i < full; i++) out[i] = rng_u32();

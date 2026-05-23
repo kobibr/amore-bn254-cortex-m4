@@ -99,32 +99,52 @@ void fp12_mul(Fp12 *r, const Fp12 *a, const Fp12 *b) {
 
 void fp12_sqr(Fp12 *r, const Fp12 *a) { fp12_mul(r, a, a); }
 
-/*
- * fp12_inv: a^{-1} using Fermat: a^{p^12 - 1 - 1} = a^{-1} mod (poly, p)
- * For BLS12-381: the GT group has order q. We use the identity
- *   a^{-1} = a^{q-2}  if a is in the subgroup of order q — but GT
- * elements from pairings live in the order-q subgroup, so
- *   a^{-1} = (conjugate) ... complex.
- * Simpler: use the norm-based formula or just fp12_exp with (p^12-2).
- * For our use case (AmorE verify) we never actually call fp12_inv on GT,
- * so we provide a placeholder that computes via iterative extended Euclidean.
- * In practice only fp12_exp is used.
- */
-void fp12_inv(Fp12 *r, const Fp12 *a) {
-    /* Exponentiation: a^{q-2} works for elements of order q (subgroup GT) */
-    /* BLS12-381 scalar order q-2 (255 bits):
-     * q   = 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001
-     * q-2 = 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfefffffffeffffffff
-     */
-    /* q - 2 from header (single source of truth) */
+/* ============================================================================
+ *  fp12_inv_gt — RESTRICTED inverse for GT-subgroup elements ONLY
+ *  ----------------------------------------------------------------------------
+ *  PRECONDITION (caller's responsibility): `a` must lie in the order-q
+ *  subgroup GT of Fp12. Pairing outputs (e(P,Q)) always satisfy this; products
+ *  of pairings satisfy it; arbitrary Fp12 elements DO NOT.
+ *
+ *  For GT elements, a^q = 1, so a^{q-2} = a^{-1}. For non-GT elements this
+ *  identity does NOT hold and the returned value is WRONG.
+ *
+ *  Bug #1 fix (formerly fp12_inv, see git blame): the function was previously
+ *  named fp12_inv and described as a "placeholder" that returns garbage on
+ *  non-GT inputs. Renamed _gt so the precondition is loud at every call site,
+ *  and any compiler-level reference to the old name now fails to link — which
+ *  is exactly the failure mode we want when someone reaches for "fp12 inverse"
+ *  without thinking about the subgroup.
+ *
+ *  General Fp12 inversion (norm-tower formula or a^{p^12 - 2}) is NOT
+ *  implemented here. Add it as fp12_inv_general() if a future caller needs it.
+ * ============================================================================ */
+void fp12_inv_gt(Fp12 *r, const Fp12 *a) {
+    /* For GT elements (order q): a^{-1} = a^{q-2}. */
     fp12_exp(r, a, BLS_Q_MINUS_2_FQ, 255);
 }
 
 /*
  * fp12_exp: binary square-and-multiply.
  * r = base^k,  k given as 8×uint32_t LE limbs, nbits = significant bits.
+ *
+ * Bug #2 fix: nbits is bounded by the array width of k[] (8 limbs × 32 bits
+ * = 256 bits). Previously, nbits > 256 silently truncated to a^{k mod 2^256},
+ * which would produce confidently wrong results for any future exponent
+ * larger than the BLS scalar order (e.g., p^12 - 2 for true Fp12 inverse).
+ * Now we explicitly fail-safe: out-of-range nbits sets r := 1 and returns.
+ * Callers expecting a real result will detect the identity output downstream.
  */
 void fp12_exp(Fp12 *r, const Fp12 *base, const uint32_t k[8], int nbits) {
+    if (nbits < 0 || nbits > 256) {
+        /* Out of range — return identity. The result is clearly wrong, but
+         * not silently corrupted: a caller computing pairing^exp will see
+         * r = 1 and can react. To extend past 256 bits, widen k[] and update
+         * the loop bound below in lockstep. */
+        fp12_one(r);
+        return;
+    }
+
     Fp12 result, cur;
     fp12_one(&result);
     fp12_copy(&cur, base);

@@ -3,7 +3,11 @@
  *
  *  Flow:
  *    1. core_init()
- *    2. ep_param_set_any_pairf() — loads BN254 curve parameters
+ *    2. ep_param_set_any_pairf() — loads whichever pairing-friendly curve
+ *       RELIC was configured for at build time (BN254, BLS12-381, etc.).
+ *       Bug #6 fix: previously labeled "BN254" here, which became misleading
+ *       once the codebase started building for BLS12-381. The actual curve
+ *       is determined by RELIC's CMake config, not by this file.
  *    3. sanity check (G1 scalar multiplication)
  *    4. generate random P, Q (in G1, G2)
  *    5. PB_N_ITER iterations of pp_map_oatep_k12, measuring DWT cycles

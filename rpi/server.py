@@ -101,7 +101,11 @@ CMD_RESULT = 0x20
 CMD_STATUS = 0x30
 CMD_READY  = 0x40
 
-def _crc8(cmd: int, data: bytes) -> int:
+def _xor_checksum(cmd: int, data: bytes) -> int:
+    """XOR parity-byte checksum (named _crc8 historically, but it's XOR).
+    The STM32 firmware uses an identical implementation, so this is correct
+    by construction. Note: detects only odd-count single-bit errors; CRC8
+    would be stronger but requires lock-step firmware changes."""
     crc = cmd ^ (len(data) & 0xFF) ^ ((len(data) >> 8) & 0xFF)
     for b in data:
         crc ^= b
@@ -110,7 +114,7 @@ def _crc8(cmd: int, data: bytes) -> int:
 def send_packet(port: serial.Serial, cmd: int, data: bytes) -> bool:
     ln  = len(data)
     hdr = bytes([0xAA, 0x55, cmd, ln & 0xFF, (ln >> 8) & 0xFF])
-    crc = _crc8(cmd, data)
+    crc = _xor_checksum(cmd, data)
     try:
         port.write(hdr + data + bytes([crc]))
         port.flush()
@@ -150,11 +154,13 @@ def recv_packet(port: serial.Serial, timeout_s: float = 30.0) -> tuple[int, byte
     plen = len_lo | (len_hi << 8)
 
     data = bytes(port.read(plen)) if plen else b''
+    if plen and len(data) < plen:
+        raise TimeoutError(f"incomplete read: got {len(data)}/{plen} bytes")
     crc_recv_b = port.read(1)
     if not crc_recv_b:
         raise TimeoutError("CRC byte timeout")
     crc_recv = crc_recv_b[0]
-    crc_calc = _crc8(cmd, data)
+    crc_calc = _xor_checksum(cmd, data)
     if crc_recv != crc_calc:
         raise ValueError(f"CRC mismatch: rx=0x{crc_recv:02x} calc=0x{crc_calc:02x}")
     return cmd, data
@@ -242,7 +248,9 @@ def run_server(port_name: str, baud: int, honest_rounds: int, log_dir: str) -> S
 
     # Send READY (honest mode indicator)
     log(info("Sending CMD_READY (mode=honest)"))
-    send_packet(port, CMD_READY, bytes([0]))
+    if not send_packet(port, CMD_READY, bytes([0])):
+        log(err("Failed to send CMD_READY — aborting"))
+        sys.exit(1)
 
     round_num      = 0
     compute_times  = []
@@ -304,7 +312,7 @@ def run_server(port_name: str, baud: int, honest_rounds: int, log_dir: str) -> S
             log(info(f"Compute done in {rt.compute_ms:.1f} ms"))
 
             result_bytes = fp12_to_bytes(gamma) + fp12_to_bytes(rho)
-            assert len(result_bytes) == 1152, "BUG: result must be 768 bytes"
+            assert len(result_bytes) == 1152, "BUG: result must be 1152 bytes (gamma 576 + rho 576)"
 
             rt.pkt_send_ok = send_packet(port, CMD_RESULT, result_bytes)
             rt.t_sent_result = time.time()
@@ -366,7 +374,7 @@ def run_server(port_name: str, baud: int, honest_rounds: int, log_dir: str) -> S
     stamp    = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_path = os.path.join(log_dir, f"amore_server_{stamp}.json")
     with open(log_path, "w") as f:
-        json.dump(asdict(tel), f, indent=2)
+        json.dump(asdict(tel), f, indent=2, default=str)
     log(info(f"JSON log saved → {log_path}"))
 
     return tel

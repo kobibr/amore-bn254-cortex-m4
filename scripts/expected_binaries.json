@@ -2,9 +2,9 @@
   "comment": "Expected binary fingerprints for the -O3 Release build. The build is fragile: stale CMakeCache.txt drops CMAKE_BUILD_TYPE silently and falls back to -O2, producing 14340-byte .text instead of 22084-byte .text (2.14x slower, breaks UART handshake timing). run_benchmark.sh now wipes BUILD_DIR before cmake. This file documents the expected fingerprints for the verify_binary target.",
   "BLS12_381": {
     "elf": {
-      "sha256": "7ae61f58a12bcd6fe78bc133d6db1d8f21f685273c6a765445d14911d6c62553",
-      "size_bytes": 1244716,
-      "text_bytes": 22084,
+      "sha256": "3ccf8080bb66a43c567485e7ce9eae7156b7f856cf58e65a8a487fec19cf77a3",
+      "size_bytes": 1248072,
+      "text_bytes": 22660,
       "data_bytes": 20,
       "bss_bytes": 35984
     },
@@ -17,7 +17,7 @@
       "expected_optimization": "-O3",
       "GPIO_TRIGGERS": 1
     },
-    "verified_date": "2026-05-22",
-    "verified_by_test": "HONEST_ROUNDS=10 + 1 malicious, all PASS (22:38)"
+    "verified_date": "2026-05-23",
+    "verified_by_test": "post-review build OK (amore.c+server.py fixes)"
   }
 }

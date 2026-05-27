@@ -3,18 +3,24 @@
 #include <string.h>
 
 /*
- * Fp12  —  degree-12 extension of Fp with modulus  x^12 - 2*x^6 + 2 = 0
+ * Fp12  —  degree-12 extension of Fp.
  *
- * This representation is IDENTICAL to py_ecc's bls12_381 FQ12, so GT elements
+ * Curve-dependent modulus:
+ *   BN254:      x^12 - 18*x^6 + 82 = 0   (xi = 9 + u)
+ *   BLS12-381:  x^12 -  2*x^6 +  2 = 0   (xi = u + 1)
+ *
+ * This representation is IDENTICAL to py_ecc's respective FQ12, so GT elements
  * serialised by the Python server are directly usable by this C code.
  *
  * Element: a[0] + a[1]*x + ... + a[11]*x^11  (12 Fp coefficients)
  *
- * Reduction rule from  x^12 = 2*x^6 - 2:
- *   For k >= 12:  coeff[k] contributes  +2*coeff[k-6]  and  -2*coeff[k-12]
+ * Reduction rule for k >= 12:
+ *   BN254:      tmp[k-6]  += 18 * tmp[k];   tmp[k-12] -= 82 * tmp[k]
+ *   BLS12-381:  tmp[k-6]  +=  2 * tmp[k];   tmp[k-12] -=  2 * tmp[k]
  *
- * Note: BLS12-381 modulus has very small constants (2 vs BN254's 18 and 82),
- * making the reduction much simpler — just doublings!
+ * The BN254 multipliers (18, 82) and BLS12-381 multipliers (2, 2) come from
+ * the curve's choice of non-residue xi defining the Fp12 tower. They are
+ * structural constants, not optimization choices.
  */
 
 /* ── Fp12 element stored as 12 Fp coefficients ── */
@@ -51,10 +57,11 @@ int fp12_eq(const Fp12 *a, const Fp12 *b) {
 
 /*
  * fp12_mul: schoolbook multiplication of two degree-11 polynomials modulo
- *           x^12 - 2*x^6 + 2, all coefficients in Fp.
+ *           the curve-specific Fp12 modulus (see header).
  *
  * Step 1: compute unreduced product (degree 22), cost = 144 fp_mul + ~132 fp_add
- * Step 2: reduce coefficients 22..12 using x^12 = 2*x^6 - 2
+ * Step 2: reduce coefficients 22..12 using x^12 = C6*x^6 - C0
+ *         where (C6, C0) = (18, 82) for BN254 and (2, 2) for BLS12-381.
  */
 void fp12_mul(Fp12 *r, const Fp12 *a, const Fp12 *b) {
     const Fp12Flat *fa = fp12_flat_c(a);
@@ -75,19 +82,42 @@ void fp12_mul(Fp12 *r, const Fp12 *a, const Fp12 *b) {
 
     /*
      * Reduce: for k = 22 down to 12
-     *   tmp[k-6]  += 2 * tmp[k]
-     *   tmp[k-12] -= 2 * tmp[k]
+     *   tmp[k-6]  += C6 * tmp[k]
+     *   tmp[k-12] -= C0 * tmp[k]
      *   tmp[k] = 0
+     *
+     * BN254:     C6=18, C0=82
+     * BLS12-381: C6=2,  C0=2
      */
     for (int k = 22; k >= 12; k--) {
         Fp c;
         fp_copy(c, tmp[k]);
         if (fp_is_zero(c)) continue;
 
+#if defined(CURVE_BN254)
+        /* C6 = 18,  C0 = 82.
+         * Compute 18*c = 16c + 2c (3 doublings + 1 add).
+         * Compute 82*c = 64c + 16c + 2c (6 doublings + 2 adds). */
+        Fp t2, t4, t16, t64, t18, t82;
+        fp_add(t2,  c,   c);          /* 2c */
+        fp_add(t4,  t2,  t2);         /* 4c */
+        fp_add(t16, t4,  t4);  fp_add(t16, t16, t16);  /* 16c */
+        fp_add(t64, t16, t16); fp_add(t64, t64, t64);  /* 64c */
+        fp_add(t18, t16, t2);         /* 18c = 16c + 2c */
+        fp_add(t82, t64, t16);
+        fp_add(t82, t82, t2);         /* 82c = 64c + 16c + 2c */
+
+        fp_add(tmp[k-6],  tmp[k-6],  t18);
+        fp_sub(tmp[k-12], tmp[k-12], t82);
+#elif defined(CURVE_BLS12_381)
+        /* C6 = 2,  C0 = 2.  Both are just doublings. */
         Fp t2;
-        fp_add(t2, c, c);  /* 2*c */
-        fp_add(tmp[k-6], tmp[k-6], t2);
+        fp_add(t2, c, c);  /* 2c */
+        fp_add(tmp[k-6],  tmp[k-6],  t2);
         fp_sub(tmp[k-12], tmp[k-12], t2);
+#else
+#  error "Fp12 reduction requires CURVE_BN254 or CURVE_BLS12_381"
+#endif
 
         fp_zero(tmp[k]);
     }
@@ -121,7 +151,7 @@ void fp12_sqr(Fp12 *r, const Fp12 *a) { fp12_mul(r, a, a); }
  * ============================================================================ */
 void fp12_inv_gt(Fp12 *r, const Fp12 *a) {
     /* For GT elements (order q): a^{-1} = a^{q-2}. */
-    fp12_exp(r, a, BLS_Q_MINUS_2_FQ, 255);
+    fp12_exp(r, a, CURVE_Q_MINUS_2_FQ, SCALAR_BITS);
 }
 
 /*

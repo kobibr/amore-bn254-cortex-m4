@@ -8,9 +8,15 @@
 # development.
 # STM32CubeF4  # commented when promoted from symlink to submodule
 relic_install
+relic_install_*
+relic_install_*.NEW-broken
 relic_build
+relic_build_*
 relic/
 relic
+src/*.silent-bias-fix-attempt
+src/*.bak
+*.diff
 
 # ---- Build artifacts --------------------------------------------------------
 build/

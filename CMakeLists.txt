@@ -75,7 +75,25 @@ endif()
 set(HAL_PATH  "${CUBE_ROOT}/Drivers")
 set(USB_PATH  "${CUBE_ROOT}/Middlewares/ST/STM32_USB_Device_Library")
 
-set(RELIC_INSTALL "${CMAKE_SOURCE_DIR}/relic_install")
+# ============================================================================
+#  RELIC install path — curve-aware (apples-to-apples C-only builds)
+# ============================================================================
+# For fair comparison vs AmorE (pure C, no asm), both curves use RELIC with
+# ARITH=easy (generic C, no hand-tuned assembly).
+#
+#   BN254     → relic_install_bn254_easy   (built by build-relic-bn254-easy.sh)
+#   BLS12_381 → relic_install_bls381       (built by build-relic-bls381.sh)
+#
+# The arm-asm-254 build (in relic_install/) is preserved as a reference for
+# showing what hand-tuned assembly achieves, but is NOT used in the energy
+# campaign — mixing C and asm would not be apples-to-apples.
+if(CURVE STREQUAL "BN254")
+    set(RELIC_INSTALL "${CMAKE_SOURCE_DIR}/relic_install_bn254_easy")
+elseif(CURVE STREQUAL "BLS12_381")
+    set(RELIC_INSTALL "${CMAKE_SOURCE_DIR}/relic_install_bls381")
+else()
+    message(FATAL_ERROR "Unknown CURVE for RELIC selection: ${CURVE}")
+endif()
 
 # =============================================================================
 #  Source lists
@@ -152,7 +170,7 @@ set(RELIC_INCLUDES
 #  Compile flags
 # =============================================================================
 set(CPU_FLAGS  "-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard")
-set(OPT_FLAGS  "-O2 -g3 -ffunction-sections -fdata-sections -fno-strict-aliasing")
+set(OPT_FLAGS  "-O3 -g3 -ffunction-sections -fdata-sections -fno-strict-aliasing")
 set(WARN_FLAGS "-Wall -Wextra -Wno-unused-parameter")
 set(DEF_FLAGS  "-DSTM32F407xx -DUSE_HAL_DRIVER")
 
@@ -184,23 +202,26 @@ add_custom_command(TARGET ${AMORE_TARGET}.elf POST_BUILD
 #  If librelic_s.a doesn't exist yet, the target is skipped at configure time.
 # =============================================================================
 if(EXISTS "${RELIC_INSTALL}/lib/librelic_s.a")
-    add_executable(relic_bench.elf ${RELIC_BENCH_SRCS} ${HAL_SRCS})
-    target_include_directories(relic_bench.elf PRIVATE
+    # Curve-aware target name: relic_bench_${CURVE_SUFFIX}.elf to match
+    # AmorE convention (amore_bn254.elf, amore_bls12_381.elf).
+    set(RELIC_BENCH_TARGET "relic_bench_${CURVE_SUFFIX}")
+    add_executable(${RELIC_BENCH_TARGET}.elf ${RELIC_BENCH_SRCS} ${HAL_SRCS})
+    target_include_directories(${RELIC_BENCH_TARGET}.elf PRIVATE
         ${COMMON_INCLUDES}
         ${RELIC_INCLUDES}
     )
-    target_link_libraries(relic_bench.elf PRIVATE
+    target_link_libraries(${RELIC_BENCH_TARGET}.elf PRIVATE
         ${RELIC_INSTALL}/lib/librelic_s.a
     )
 
-    add_custom_command(TARGET relic_bench.elf POST_BUILD
-        COMMAND ${CMAKE_OBJCOPY} -O ihex   $<TARGET_FILE:relic_bench.elf> relic_bench.hex
-        COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:relic_bench.elf> relic_bench.bin
-        COMMAND ${CMAKE_SIZE}              $<TARGET_FILE:relic_bench.elf>
+    add_custom_command(TARGET ${RELIC_BENCH_TARGET}.elf POST_BUILD
+        COMMAND ${CMAKE_OBJCOPY} -O ihex   $<TARGET_FILE:${RELIC_BENCH_TARGET}.elf> ${RELIC_BENCH_TARGET}.hex
+        COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${RELIC_BENCH_TARGET}.elf> ${RELIC_BENCH_TARGET}.bin
+        COMMAND ${CMAKE_SIZE}              $<TARGET_FILE:${RELIC_BENCH_TARGET}.elf>
         COMMENT "RELIC bench: generating HEX and BIN"
     )
 
-    message(STATUS "RELIC found at ${RELIC_INSTALL} — relic_bench.elf target enabled")
+    message(STATUS "RELIC found at ${RELIC_INSTALL} — ${RELIC_BENCH_TARGET}.elf target enabled")
 
     # =========================================================================
     #  Target 3: Regression test for patched RELIC arm-asm-254 backend (new)

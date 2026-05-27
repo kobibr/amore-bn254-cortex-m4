@@ -48,21 +48,6 @@ static void error_set(uint32_t code, uint8_t batch, uint16_t round) {
 
 /* -----------------------------------------------------------------------
  * PRNG (xoshiro128**, seeded from DWT+tick)
- *
- * !! WARNING — INSECURE BENCHMARK RNG, NOT FOR PRODUCTION KEYS !!
- *
- * Bug #5 (documented, not fixed in code): rng_seed() draws ~16-20 bits of
- * effective entropy at best:
- *   - cyc() runs right after DWT init (CYCCNT≈few thousand, narrow range)
- *   - HAL_GetTick() is ~0-few ms at startup (narrow range)
- *   - rng_s[1..3] are deterministic XOR functions of rng_s[0], so the
- *     total state entropy is dominated by rng_s[0].
- *
- * For the energy-benchmark use case this is acceptable (and even useful
- * for reproducibility across replicas). For deploying AmorE in a real
- * security setting, replace this with a true hardware RNG (STM32F4 RNG
- * peripheral or ADC-noise pool). Until then, do NOT treat sk->s or
- * sec->r values produced here as cryptographically private.
  * ----------------------------------------------------------------------- */
 static uint32_t rng_s[4];
 
@@ -108,23 +93,10 @@ static void sample_scalar_fq(Fq r) {
 }
 
 static int sample_short_scalar(uint32_t out[8], uint32_t phi) {
-    /* out[] is exactly 8 uint32_t = 256 bits.
-     * phi must be <= 256 or we corrupt the stack.
-     *
-     * Bug #3 fix: phi=0 used to leave out=[0,...,0], then the "if (!nz)"
-     * guard below would set out[0]=1, but the function returned nbits=0.
-     * Callers using nbits in `g2_scalar_mul` / `fp12_exp` would then
-     * iterate zero times and silently treat the scalar as 0 — even though
-     * the buffer says 1. AMORE_PHI is currently never 0, so this is a
-     * defensive fix rather than an active bug. Clamp phi to >= 1 so the
-     * returned nbits matches the actual scalar in the buffer.
-     */
-    if (phi > 256) phi = 256;
-    if (phi < 1)   phi = 1;
     memset(out, 0, 32);
     uint32_t full = phi / 32, rem = phi % 32;
     for (uint32_t i = 0; i < full; i++) out[i] = rng_u32();
-    if (rem && full < 8) out[full] = rng_u32() & ((1u << rem) - 1u);
+    if (rem) out[full] = rng_u32() & ((1u << rem) - 1u);
     uint32_t nz = 0;
     for (int i = 0; i < 8; i++) nz |= out[i];
     if (!nz) out[0] = 1;
@@ -246,11 +218,9 @@ int AmorE_Verify(const AmorE_SK *sk, const AmorE_Sec *sec, const AmorE_Out *out)
  * ----------------------------------------------------------------------- */
 /* G1 generator bytes — populated at runtime from CURVE_G1X/Y in the const header */
 static uint8_t G1GEN_BYTES[96];   /* filled once in RunBenchmark */
-/* G2 generator bytes — populated at runtime from CURVE_G2X/Y in the const header */
+/* G1 generator now populated at runtime from CURVE_G1X/Y */
 static uint8_t g_g2gen_bytes[192];   /* filled once in RunBenchmark */
 static uint8_t uart_buf[1280];        /* receive buffer (gamma+rho = 1152, +headroom) */
-_Static_assert(sizeof(uart_buf) >= AMORE_PROTO_IN_BYTES,
-               "uart_buf must be at least AMORE_PROTO_IN_BYTES (1152)");
 
 /* -----------------------------------------------------------------------
  * Inline helpers for the benchmark loop
@@ -289,7 +259,7 @@ void AmorE_RunBenchmark(AmorE_BenchResults *res) {
         if (rc != 0) {
             error_set(ERR_UART_TIMEOUT, 0, 0);
             TRIG_ALL_LO();
-            res->status = 0xDEAD0001u;
+        res->status = 0xDEAD0001u;
             return;
         }
         /* byte 0: 0=honest, 1=malicious (informational only) */

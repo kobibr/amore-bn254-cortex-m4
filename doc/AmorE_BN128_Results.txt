@@ -6,29 +6,28 @@
 ╚══════════════════════════════════════════════════════════════════════════╝
 
   ─────────────────────────────────────────────────────────────────────────
-  Note added 2026-05-13:
+  Note revised 2026-05-31:
 
-  AmorE BN254 below uses GCC -O2 throughout (Section 1). 
+  AmorE BN254 below uses GCC -O2 throughout (Section 1).
 
-  The RELIC BN254 baseline cited in Section 11 (252.3 ms) is built with 
-  the arm-asm-254 backend — hand-tuned ARM assembly for field arithmetic
-  (fp_mul_low, fp_add_low, fp_rdc_low as .s files). The -O2 / -O3 GCC
-  flag affects only the surrounding C code, not the assembly. The 252.3 ms
-  reflects RELIC's hand-tuned ASM performance, which is RELIC's intended
-  production configuration.
+  The RELIC BN254 baseline in Section 11 is built with ARITH=easy
+  (pure C) — the same backend used for the BLS12-381 comparison.
 
-  The Section 11 comparison is therefore "AmorE C at -O2" vs "RELIC C-with-
-  hand-tuned-ASM-backend". It is legitimate (both are production builds)
-  but is implementation-asymmetric (C vs ASM).
+  An earlier revision of this note (2026-05-13) attributed the baseline
+  to a hand-tuned arm-asm-254 assembly backend. That attribution was
+  incorrect: RELIC's arm-asm-254 sources do not assemble for the
+  Thumb-2 / Cortex-M4 target (legacy conditional-infix syntax, e.g.
+  `adcnes`), so no assembly backend was ever built or measured on this
+  platform. Every RELIC build used here is ARITH=easy (pure C).
 
-  This is different from the BLS12-381 situation documented in
-  AmorE_BLS12_381_Results.txt Section 8.5, where RELIC uses ARITH=easy
-  (pure C at -O3) and AmorE was re-built at -O3 for clean -O3 vs -O3
-  comparison.
+  The figure originally reported in Section 11 (252.3 ms / 42,386,215
+  cyc) reflected an earlier easy-C build. Re-measurement on 2026-05-31
+  with the current easy-C RELIC (ARITH=easy, FP_PRIME=254) gives
+  218.2 ms (36,658,970 cyc) at -O2; -O3 is within 0.3% (36,778,389 cyc).
+  Section 11 has been updated to 218.2 ms.
 
-  Future work (docs/future_work.md): hand-tuned ASM optimization of
-  AmorE's fp_mul (projected ~30% additional speedup, target ~268 ms
-  per round for BN254 if scaled from BLS).
+  The Section 11 comparison is therefore C-vs-C (symmetric): AmorE pure
+  C at -O2 vs RELIC pure C (easy) — not C-vs-ASM.
   ─────────────────────────────────────────────────────────────────────────
 
 
@@ -299,28 +298,28 @@
 
   Statistic                Value
   ----------------------   --------------------
-  N (samples)              10
-  Mean                     252.3 ms      (42,386,215 cycles)
-  Min                      252.3 ms      (42,386,001 cycles)
-  Max                      252.3 ms      (42,386,356 cycles)
-  Range                    2.1 us        (355 cycles)
-  Coeff. of variation      0.00084%      (extraordinarily stable)
+  pairing (easy-C, -O2)    218.2 ms      (36,658,970 cycles)
+  pairing (easy-C, -O3)    218.9 ms      (36,778,389 cycles)
 
-  The variance is so small (CV < 0.001%) that the measurement is
-  essentially deterministic. No replication is required.
+  Re-measured 2026-05-31. The value originally reported here
+  (252.3 ms / 42,386,215 cyc) was an earlier RELIC easy-C build; the
+  current easy-C build (ARITH=easy, FP_PRIME=254) measures 218.2 ms at
+  -O2, with -O3 within 0.3%. RELIC's easy-C pairing is deterministic
+  (stdev ~ 0), so a single measurement suffices. No arm-asm-254 build
+  was used: those sources do not assemble for Cortex-M4 (Thumb-2).
 
   11.1  Direct comparison
 
   Operation                                       Time (ms)    Source
   ----------------------------------------------- ----------   --------
-  Single BN254 pairing on STM32F4 (RELIC, C)      252.3 ms     measured
+  Single BN254 pairing on STM32F4 (RELIC, C)      218.2 ms     measured
   AmorE per-round amortized cost (N=50)           381.8 ms     measured
   ----------------------------------------------- ----------
-  AmorE / RELIC ratio                             1.51x        derived
+  AmorE / RELIC ratio                             1.75x        derived
 
   Per the strict "apples-to-apples" comparison:
 
-      AmorE costs ~1.5x MORE per round than computing a single BN254
+      AmorE costs ~1.75x MORE per round than computing a single BN254
       pairing directly with optimized C on the same STM32F4.
 
   This reverses the systemic 192.4x speedup figure of Section 7 when
@@ -349,7 +348,7 @@
 
   The right framing for AmorE on STM32F4 is therefore:
 
-      "Trade ~1.5x speed (vs in-place C) for 33x less RAM,
+      "Trade ~1.75x speed (vs in-place C) for 33x less RAM,
        3x less Flash, and the ability to outsource pairing
        computation to an untrusted helper with verifiable results."
 
@@ -371,7 +370,7 @@
     AmorE cost ratio   :  0.52%    of remote pairing time
 
   vs Optimized C on same STM32  (Section 11)
-    Speedup            :  0.66x    (i.e. AmorE is 1.51x SLOWER)
+    Speedup            :  0.57x    (i.e. AmorE is 1.75x SLOWER)
     Memory ratio       :  AmorE uses 33x less RAM and 3x less Flash
 
   The contribution of AmorE is therefore best characterized as

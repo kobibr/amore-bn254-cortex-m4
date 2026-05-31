@@ -61,17 +61,17 @@
         Field expansion:    254 → 381 bits     (1.50× more bits)
         Limb count:           8 → 12 limbs     (1.50×)
         Multiplication O(n²): 12² / 8² = 2.25× (CIOS Montgomery)
-        Assembly removal:                        ~2× (BN254 had asm)
         ─────────────────────────────────────────────────────
-        Predicted slowdown:                     ~4.5–5.5×
-        Measured slowdown:                       5.03×  ✓
-    
-    A measured ratio outside the predicted 4.5-5.5x range would
-    warrant investigation: too-slow could indicate a bug; too-fast
-    an unaccounted optimization. The agreement between prediction
-    and measurement is consistent with the inner-loop arithmetic
-    being correctly implemented, complementary to the unit tests
-    in Section 3.
+        fp_mul limb prediction:                  ~2.25×
+        Measured slowdown:                       5.03×
+
+    Both BN254 and BLS12-381 are pure C (no assembly on either side).
+    The measured 5.03× exceeds the ~2.25× expected from fp_mul limb
+    growth alone; the remainder arises from Fp12 tower arithmetic and
+    larger buffers across the call chain, and is not fully characterized
+    here. Correctness is established by the unit tests (Section 3,
+    457/457) and end-to-end verification (61/61 honest + 1/1 malicious),
+    not by this ratio.
 
 
   ─────────────────────────────────────────────────────────────────────
@@ -272,23 +272,23 @@
   Verify (per round)      175.2 ms        887.2 ms    5.06×
   Per-round amortized     381.8 ms      1,919.3 ms    5.03×
 
-  Sources of slowdown (theoretical model):
+  Sources of slowdown:
     - Field size:     254 → 381 bits  ( ~50% larger)
     - Limb count:       8 → 12        (  50% more)
     - fp_mul cost:    O(n²) → 12²/8²  = 2.25× per multiplication
-    - Assembly:       hand-tuned → none (BN254 had asm; BLS12-381 is C)
+    - Both sides pure C: no assembly on either BN254 or BLS12-381
     - Buffer sizes:   roughly 2× throughout
     
-    Compounded: ~4.5×–5.5× expected slowdown range.
-    Measured:    5.03×  →  WITHIN RANGE.
+    fp_mul limb growth alone predicts ~2.25×.
+    Measured:    5.03×  →  exceeds the fp_mul-only estimate.
 
   Why this matters:
-    A measured ratio outside the 4.5–5.5× window would warrant
-    investigation: either a port bug (if too slow) or an unaccounted
-    optimization (if too fast). The 5.03× match between prediction and
-    measurement provides indirect confirmation that the inner loops of
-    fp_mul, fp_sqr, fp2_mul, and fp12_mul are correctly implemented —
-    independent of and complementary to the unit tests in Section 3.
+    The measured 5.03× is higher than the ~2.25× expected from fp_mul
+    limb growth alone. The excess arises from Fp12 tower arithmetic and
+    larger buffers across the call chain, and is not fully characterized
+    here. Correctness of the port is established by the unit tests
+    (Section 3, 457/457) and end-to-end verification (61/61 honest +
+    1/1 malicious) — not by this slowdown ratio.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   7. NOTES AND FUTURE WORK

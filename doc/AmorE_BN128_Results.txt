@@ -60,23 +60,29 @@
   2. MEMORY FOOTPRINT  (arm-none-eabi-size output)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  Section    Size (B)    % of available    Description
-  --------   --------    --------------    ---------------------------------
-  .text       18,532      1.77% / 1 MB     Code + read-only constants (Flash)
-  .data           20      0.01% / 192 KB   Initialized globals (Flash->SRAM)
-  .bss         3,156      1.65% / 192 KB   Zero-init globals incl. g_results
-  --------   --------
-  Flash total: 18,552 B   (18.1 KiB  --  1.77% of 1 MB)
-  SRAM total :  3,176 B   ( 3.1 KiB  --  1.62% of 192 KB)
+  Section            Size (B)    Region    Description
+  -----------------  --------    ------    ---------------------------------
+  .isr_vector              64    Flash     Vector table
+  .text                19,596    Flash     Code
+  .rodata                 836    Flash     Read-only constants
+  .data                    12    Flash->SRAM  Initialized globals
+  .bss                  3,216    SRAM      Zero-init globals incl. g_results
+  ._user_heap_stack    32,768    SRAM      Linker stack/heap reservation
+  -----------------  --------
+  Flash total  : 20,516 B  (20.0 KiB  --  1.96% of 1 MB)
+  SRAM working : 3,228 B   ( 3.2 KiB  --  1.64% of 192 KB)   [.data + .bss]
+  SRAM total   : 35,996 B  (35.2 KiB  -- 18.3% of 192 KB)    [+ 32 KB stack/heap]
 
   Key symbols
     g_results  (AmorE_BenchResults) @ 0x20000028  -- telemetry struct in .bss
 
   Interpretation
     The entire AmorE client -- field arithmetic, EC ops, UART stack,
-    protocol logic, and telemetry -- fits in under 19 KB of Flash and
-    under 4 KB of SRAM. This is well within the budget of any Cortex-M0+
-    device, suggesting portability to even more constrained hardware.
+    protocol logic, and telemetry -- fits in ~20 KB of Flash and under
+    4 KB of SRAM working memory (the 32 KB stack/heap reservation is a
+    tunable linker setting, not intrinsic). This is well within the
+    budget of any Cortex-M0+ device, suggesting portability to even
+    more constrained hardware.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   3. PROTOCOL CORRECTNESS
@@ -332,11 +338,22 @@
   AmorE is not faster than local C — but speed was never the only
   axis. The protocol's value lies elsewhere:
 
-  Resource              AmorE client    RELIC pairing    Ratio
-  --------------------- --------------- ---------------- -------------
-  Flash (.text)         18.5 KB         55.1 KB          AmorE: 3.0x lighter
-  SRAM (.bss)           3.1 KB          101.4 KB         AmorE: 33x lighter
-  ELF total             21.7 KB         156.7 KB         AmorE: 7.2x smaller
+  Resource                    AmorE client   RELIC pairing   Ratio
+  --------------------------- -------------- --------------- -------------
+  Flash (code + rodata)       20.0 KB        84.3 KB         4.2x lighter
+  SRAM working (data + bss)   3.2 KB         67.3 KB         21x  lighter
+  SRAM incl. stack/heap       35.2 KB        99.3 KB         2.8x lighter
+
+  Note (revised 2026-05-31): an earlier version of this table reported
+  "33x lighter" on SRAM. That figure compared AmorE's working globals
+  (3.1 KB, .data+.bss) against RELIC's *total* SRAM including the 32 KB
+  linker stack/heap reservation (101.4 KB) — not a like-for-like basis.
+  The table above reports both bases consistently: working globals (the
+  memory each implementation actually allocates) give 21x; total SRAM
+  including the identical 32 KB stack/heap reservation gives 2.8x. The
+  RELIC figures were re-measured on the current easy-C (ARITH=easy)
+  build via arm-none-eabi-size -A; the bulk of RELIC's SRAM is its
+  pairing context (first_ctx, ~67 KB). Flash is code+rodata+data.
 
   In addition, AmorE provides:
     - Pairing-library avoidance: client needs no pairing implementation
@@ -348,8 +365,8 @@
 
   The right framing for AmorE on STM32F4 is therefore:
 
-      "Trade ~1.75x speed (vs in-place C) for 33x less RAM,
-       3x less Flash, and the ability to outsource pairing
+      "Trade ~1.75x speed (vs in-place C) for 21x less working
+       RAM, 4.2x less Flash, and the ability to outsource pairing
        computation to an untrusted helper with verifiable results."
 
   On a Cortex-M4 with 192 KB SRAM, this trade-off is not compelling
@@ -371,7 +388,7 @@
 
   vs Optimized C on same STM32  (Section 11)
     Speedup            :  0.57x    (i.e. AmorE is 1.75x SLOWER)
-    Memory ratio       :  AmorE uses 33x less RAM and 3x less Flash
+    Memory ratio       :  AmorE uses 21x less working RAM and 4.2x less Flash
 
   The contribution of AmorE is therefore best characterized as
   ENABLING pairing-based cryptography on memory-constrained MCUs

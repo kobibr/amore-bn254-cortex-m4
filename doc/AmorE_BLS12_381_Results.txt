@@ -226,15 +226,22 @@
     Paper AmorE total client:      2,168 kcyc
     Paper speedup: 1 - 2168/3194 = 32.1% (AmorE 1.47x faster)
 
-  Platform inversion: on Kaby Lake with optimized asm pairings,
-  AmorE wins by 32.1%. On Cortex-M4 without asm, the local pairing
-  is proportionally cheaper, AmorE client overhead (Setup + Verify)
-  dominates, and the comparison inverts. The RELIC BLS12-381 build
-  on this platform uses ARITH=easy (pure C), versus the asm-
-  accelerated Kaby Lake build that the paper benchmarks.
-
-  Hypothesis (not yet verified): the asm gap drives most of the
-  difference. Verifying would require porting fp_mul asm to Cortex-M4.
+  Why the comparison differs from the paper (revised 2026-06-01):
+  The earlier "platform inversion" hypothesis -- that the loss is due to
+  Cortex-M4 lacking asm -- does NOT hold. Asm would speed up the client's
+  field arithmetic too, not just the pairing, leaving the client/pairing
+  ratio roughly unchanged. We tested this with a primitive microbench that
+  measures the client's building blocks (gt_exp cyclotomic, ep_mul,
+  ep2_mul, gt_is_valid) using RELIC's OWN routines on this same STM32 +
+  same librelic_s.a (validated: microbench pp_map matched the baseline to
+  0.18%). Applying the paper's cost formula to the measured RELIC-grade
+  primitives gives: single (M=1) -0.8% (near tie), batch M=5 +46%,
+  M=10 +52%, M=50 +57%. Two real causes, neither "platform inversion":
+  (1) implementation gap -- home Fp12 is ~1.70x slower than the same
+  protocol in RELIC primitives (closable); (2) platform fact -- even with
+  RELIC-grade arithmetic, SINGLE-pairing delegation does not win on M4;
+  AmorE wins via BATCH delegation (M>=5). The paper's 32.1% corresponds
+  to the batch regime, not single.
 
   Evidence and reproducibility:
     - AmorE -O3 binary SHA prefix:  4e2df263..., tag measurement-O3-2026-05-12
@@ -473,10 +480,14 @@
     AmorE total: 2,168 kcyc (online + onetime/10)
     Ratio: 2168/3194 = 0.68  (32.1% client gain, AmorE 1.47x faster)
 
-  Platform inversion: paper wins on Kaby Lake (with asm) at 1.47x,
-  this implementation loses on Cortex-M4 (no asm) at 1.72x slower.
-  Hypothesized cause: RELIC's BLS12-381 build on Cortex-M4 uses
-  ARITH=easy (pure C), versus asm-accelerated Kaby Lake build.
+  Why this implementation loses at 1.72x (revised 2026-06-01):
+  NOT "platform inversion" (asm would speed up the client too). A primitive
+  microbench (RELIC's own gt_exp/ep_mul/ep2_mul on this same STM32,
+  validated vs the pairing baseline to 0.18%) fed into the paper's cost
+  formula shows: single (M=1) -0.8% (near tie), batch M=5/10/50 = +46/+52/
+  +57%. The 1.72x is (1) ~1.70x implementation debt (home Fp12 vs RELIC
+  Fp12, closable) plus (2) the platform fact that single-pairing delegation
+  does not win on M4. AmorE wins via BATCH delegation (M>=5).
 
   RELIC re-measurement (the -O3 fix that was real and stands):
 
@@ -574,7 +585,6 @@
     - Binaries preserved:   ~/git_backups/binaries/main_O{2,3}_*.{elf,bin}
 
   Future work:
-    1. Re-measure RELIC and BN254 baselines at -O3 for fair comparison
     2. Hand-tuned ARM assembly using UMAAL: projected ~30% additional
        speedup (-> ~628 ms amort per round)
     3. Energy measurement at both -O2 and -O3 with PPK2 hardware:

@@ -247,6 +247,32 @@ if(EXISTS "${RELIC_INSTALL}/lib/librelic_s.a")
     )
 
     message(STATUS "regression_test.elf target enabled")
+
+    # =========================================================================
+    #  Target 5: FAIR primitive microbench (RELIC primitives on the MCU)
+    #  Same librelic_s.a + same clock/DWT as relic_bench, so the AmorE client
+    #  building blocks are timed apples-to-apples vs the pp_map_oatep_k12
+    #  baseline. Read g_micro via GDB.
+    # =========================================================================
+    set(MICRO_BENCH_TARGET "micro_bench_${CURVE_SUFFIX}")
+    set(MICRO_BENCH_SRCS
+        src/micro_main.c
+        src/micro_bench.c
+        src/syscalls.c
+        src/startup_stm32f407xx.c
+        ${CUBE_ROOT}/Drivers/CMSIS/Device/ST/STM32F4xx/Source/Templates/system_stm32f4xx.c
+    )
+    add_executable(${MICRO_BENCH_TARGET}.elf ${MICRO_BENCH_SRCS} ${HAL_SRCS})
+    target_include_directories(${MICRO_BENCH_TARGET}.elf PRIVATE
+        ${COMMON_INCLUDES} ${RELIC_INCLUDES})
+    target_link_libraries(${MICRO_BENCH_TARGET}.elf PRIVATE
+        ${RELIC_INSTALL}/lib/librelic_s.a)
+    add_custom_command(TARGET ${MICRO_BENCH_TARGET}.elf POST_BUILD
+        COMMAND ${CMAKE_OBJCOPY} -O ihex   $<TARGET_FILE:${MICRO_BENCH_TARGET}.elf> ${MICRO_BENCH_TARGET}.hex
+        COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${MICRO_BENCH_TARGET}.elf> ${MICRO_BENCH_TARGET}.bin
+        COMMAND ${CMAKE_SIZE}              $<TARGET_FILE:${MICRO_BENCH_TARGET}.elf>
+        COMMENT "Micro bench: generating HEX and BIN")
+    message(STATUS "${MICRO_BENCH_TARGET}.elf target enabled")
 else()
     message(STATUS "RELIC not yet built — relic_bench.elf and regression_test.elf SKIPPED")
     message(STATUS "  Run scripts/build-relic.sh first, then re-run cmake")

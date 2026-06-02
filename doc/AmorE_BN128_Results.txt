@@ -292,7 +292,8 @@
   measured by the same DWT cycle counter at the same 168 MHz clock.
 
   Native implementation
-    Library      : RELIC v0.6.0  (10.23 MiB, 36k objects)
+    Library      : RELIC v0.7.0  (revised 2026-06-01: was mislabeled
+                   v0.6.0; relic_conf.h confirms RLC_VERSION 0.7.0)
     Curve        : BN_P254  (same curve as alt_bn128 / BN128)
     Pairing      : pp_map_oatep_k12  (Optimal Ate, embedding degree 12)
     ARITH        : easy  (pure C, gcc -O2 -mthumb -mfpu=fpv4-sp-d16)
@@ -389,6 +390,22 @@
   vs Optimized C on same STM32  (Section 11)
     Speedup            :  0.57x    (i.e. AmorE is 1.75x SLOWER)
     Memory ratio       :  AmorE uses 21x less working RAM and 4.2x less Flash
+
+    Fair protocol comparison (added 2026-06-01):
+    The 1.75x SLOWER figure above compares the AmorE client (hand-written,
+    unoptimized Fp12 arithmetic) against RELIC's optimized pairing, so it
+    mixes an implementation gap into the protocol result. We measured the
+    client's primitives using RELIC's OWN routines on this same STM32
+    (microbench validated vs the pairing baseline to 0.008%: 36,775,493 vs
+    36,778,389 cyc) and applied the paper's cost formula:
+       single (M=1):  -27%   (single-pairing delegation does NOT win on M4)
+       batch  M=5:    +25%   (wins)
+       batch  M=10:   +32%   (wins)
+       batch  M=50:   +37%   (wins)
+    Conclusions: ~1.51x of the 1.75x is implementation debt (home Fp12 vs
+    RELIC Fp12, closable with RELIC-grade arithmetic); even with RELIC-grade
+    arithmetic SINGLE delegation does not win on M4; AmorE wins via BATCH
+    delegation (M>=5), +25% to +37% per pairing.
 
   The contribution of AmorE is therefore best characterized as
   ENABLING pairing-based cryptography on memory-constrained MCUs

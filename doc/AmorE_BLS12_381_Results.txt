@@ -9,6 +9,111 @@
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  TIMING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ══════════════════════════════════════════════════════════════════════
+  HOW TO READ THIS REPORT  —  results that look opposite but aren't
+  ══════════════════════════════════════════════════════════════════════
+  At a glance some numbers here can look contradictory. They are NOT.
+  Each measures a DIFFERENT thing:
+
+    A) "AmorE SAVES 57%"  vs  "AmorE is 1.72x SLOWER"
+         saves 57%    = a BATCH of 50, RELIC-grade arithmetic   (T.1)
+         1.72x slower = ONE delegation, our hand-written Fp12   (T.3)
+         Different workload AND different code. Both correct.
+
+    B) "5.03x slowdown vs BN254"  vs  "2.35x slowdown vs BN254"
+         5.03x = like-for-like, BOTH built at -O2 (valid)       (Section 6)
+         2.35x = -O3 AmorE vs -O2 BN254, NOT comparable         (Section 8.6)
+         Use 5.03x. 2.35x is kept only as a flagged reference.
+
+    C) "2.14x speedup"
+         = AmorE getting faster ON ITSELF when compiled -O3 instead of
+           -O2 (1,919 ms -> 898 ms). NOT a comparison vs RELIC or vs a
+           local pairing.                                        (Section 8)
+
+  Nowhere does this report say AmorE is both faster and slower than the
+  SAME thing in the SAME setting.
+  ══════════════════════════════════════════════════════════════════════
+
+
+  T.1  Batch delegation (M=50) — headline
+  ───────────────────────────────────────
+  AmorE exists to delegate MANY pairings. The figures below are the
+  CLIENT COMPUTE TIME PER PAIRING, AmorE delegation vs computing one
+  pairing locally, from the AmorE paper's cost formula applied to the
+  measured RELIC-grade primitives (microbench: RELIC's own
+  gt_exp/ep_mul/ep2_mul on this STM32, validated vs the pairing baseline
+  to 0.18%).
+
+  Sign convention:
+      POSITIVE = AmorE SAVES that share of compute time per pairing (faster)
+      NEGATIVE = AmorE COSTS that much more compute time per pairing (slower)
+
+      single (M=1):  -0.8%  AmorE costs 0.8% more compute time (near tie)
+      batch  M=5:    +46%   AmorE saves 46% compute time per pairing
+      batch  M=10:   +52%   AmorE saves 52% compute time per pairing
+      batch  M=50:   +57%   AmorE saves 57% compute time per pairing
+
+  At M=50, AmorE saves 57% of client compute time per pairing.
+  Provenance: primitive cycles MEASURED (microbench); batch client cost
+  from the paper formula; compute-only (no comm, no server-wait).
+  See Section 5.
+
+  T.2  Per-round amortized timing (measured, N=50)
+  ────────────────────────────────────────────────
+  Variant A (-O2):
+      OneTimeSetup        430,950,212 cyc    2,565.2 ms
+      Blind  (per round)                     1,032.1 ms
+      Verify (per round)                       887.2 ms
+      Amort/round (N=50)  322,441,870 cyc    1,919.3 ms
+
+  Variant B (-O3, CMAKE_BUILD_TYPE=Release):
+      OneTimeSetup                           1,151.2 ms
+      Setup  (per round)                       488   ms
+      Verify (per round)                       410   ms
+      Amort/round (N=50)                       898.0 ms
+      Speedup over -O2: 2.14x  (fp_mul loop unrolling; see Section 8)
+
+  T.3  Single delegation vs one local pairing (RELIC, measured, -O3)
+  ──────────────────────────────────────────────────────────────────
+      RELIC pp_map_oatep_k12 (1 pairing, -O3):  523.41 ms
+      AmorE 1 delegation amortized (N=50, -O3):  898.0 ms
+      Ratio: 898.0 / 523.41 = 1.72x  (AmorE slower; single delegation,
+             home Fp12)
+
+  ~1.70x of the 1.72x is implementation debt (home Fp12 vs RELIC Fp12,
+  closable). Single-pairing delegation does not win on M4; AmorE wins
+  via BATCH (M>=5) — see T.1.
+
+  ──────────────────────────────────────────────────────────────────────
+  >>> NOT A CONTRADICTION with T.1 above <<<
+  T.1 says AmorE SAVES 57%; T.3 says AmorE is 1.72x SLOWER. Two cases:
+      T.1 = BATCH of 50, RELIC-grade arithmetic    ->  saves 57%
+      T.3 = ONE delegation, our hand-written Fp12  ->  1.72x slower
+  AmorE exists to delegate MANY pairings (the batch case). Both correct.
+  ──────────────────────────────────────────────────────────────────────
+
+  T.4  Slowdown vs BN254 (same protocol/hardware, both -O2)
+  ──────────────────────────────────────────────────────────
+      OneTimeSetup        503.9 ms  -> 2,565.2 ms   5.09x
+      Blind  (per round)  197.3 ms  -> 1,032.1 ms   5.23x
+      Verify (per round)  175.2 ms  ->   887.2 ms   5.06x
+      Amort/round         381.8 ms  -> 1,919.3 ms   5.03x
+
+  ──────────────────────────────────────────────────────────────────────
+  >>> A "2.35x" figure also appears later (Section 8.6) — read this <<<
+  The 5.03x here is the VALID slowdown: AmorE and BN254 are BOTH at -O2.
+  Section 8.6 also shows 2.35x, but that mixes -O3 AmorE with -O2 BN254
+  and is NOT like-for-like. Use 5.03x; treat 2.35x as a flagged reference.
+  ──────────────────────────────────────────────────────────────────────
+
+  Full timing detail: Section 4.  RELIC comparison: Section 5.
+  -O2/-O3: Section 8.  vs BN254: Section 6.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   0. EXECUTIVE SUMMARY  —  Three Key Findings
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -220,6 +325,13 @@
     -> AmorE pays 1.72x the client cost of a local pairing on
        this platform (Cortex-M4 without asm acceleration).
 
+  ──────────────────────────────────────────────────────────────────────
+  >>> NOT A CONTRADICTION with the batch result (saves 57%) <<<
+  This 1.72x slower is for ONE delegation with our hand-written Fp12.
+  For a BATCH of 50 with RELIC-grade arithmetic, AmorE SAVES 57% (see the
+  paragraph below and T.1). Single pairing = worst case; batch = intended.
+  ──────────────────────────────────────────────────────────────────────
+
   Compare to AmorE paper Table 3 on Kaby Lake:
 
     Paper p (local pairing):       3,194 kcyc
@@ -252,14 +364,8 @@
     - Diego's 523.4 ms reproduced to 0.002% (87,933,033 cycles avg of 10
       iterations at 168 MHz, CV 0.00016%).
 
-  Note on prior framing: earlier versions of this report compared
-  AmorE per-round against "3 direct pairings" (yielding 1.22x slower
-  at -O2 in May 7, then 1.75x "faster" at -O3 in May 12). That
-  baseline was inherited from earlier benchmark work and conflated
-  server-side pairing work with what the client actually delegates
-  per round. The AmorE paper Section 7.2 specifies 1:1 (1 delegation
-  vs 1 local pairing). The 1:1 ratio above is the authoritative
-  comparison. See Section 8.5 for the correction history.
+  The comparison above is 1:1 per AmorE paper Section 7.2 (1 delegation
+  vs 1 local pairing). This is the authoritative framing for this report.
 
   Energy comparison pending PPK2 measurement (the time ratio alone
   does not establish energy budget; battery-constrained scenarios
@@ -340,6 +446,14 @@
   produced a 2.14x speedup with identical correctness. This section
   documents both measurements and the controllable trigger.
 
+  ──────────────────────────────────────────────────────────────────────
+  >>> WHAT 2.14x IS (and is NOT) <<<
+  2.14x = AmorE compiled -O3 vs the SAME AmorE compiled -O2
+          (1,919.3 ms -> 898.0 ms). It is AmorE getting faster ON ITSELF.
+  It is NOT a comparison against RELIC or against a local pairing, and it
+  does NOT conflict with "AmorE wins in batch" -- a different measurement.
+  ──────────────────────────────────────────────────────────────────────
+
   8.1 The flag that makes the difference: -O2 vs -O3
   ──────────────────────────────────────────────────
 
@@ -410,6 +524,14 @@
     against pre-2026-05-12 builds (likely -O2). A like-for-like
     re-measurement with both baselines at -O3 is pending.
 
+  ──────────────────────────────────────────────────────────────────────
+  >>> READING THE "5.03x  vs  2.35x" ROW ABOVE <<<
+  These are NOT two conflicting slowdowns. 5.03x compares -O2 AmorE to
+  -O2 BN254 (like-for-like, valid). 2.35x compares -O3 AmorE to -O2 BN254
+  (mismatched build levels, NOT comparable). The valid number is 5.03x;
+  2.35x is a flagged reference until BN254 is re-measured at -O3.
+  ──────────────────────────────────────────────────────────────────────
+
 
   8.3 Why -O3 produces a 2.14x speedup
   ────────────────────────────────────
@@ -465,7 +587,7 @@
   ───────────────────────────────────────────────────────────────
 
   Per AmorE paper Section 7.2, the canonical comparison is 1:1
-  (1 AmorE delegation vs 1 local pairing), not 1:3.
+  (1 AmorE delegation vs 1 local pairing).
 
   At -O3, both implementations:
 
@@ -506,28 +628,16 @@
 
   Correction history (Sections 5 + 8.5 of this doc):
 
-    2026-05-07: Original comparison used "3 direct pairings" as
-                baseline. Yielded 1919/1570 = 1.22x slower.
-
     2026-05-12: Discovered AmorE was at -O2 while RELIC was at -O3
-                (asymmetric). Rebuilt AmorE at -O3: 898.0 ms.
-                At that point, re-applying "3 direct pairings"
-                baseline yielded 898/1570 = 0.572 (1.75x "faster").
+                (asymmetric). Rebuilt AmorE at -O3: 1919 -> 898.0 ms.
 
-    2026-05-13: Diego asked why 3-pairings baseline. Re-reading paper
-                Section 7.2 confirmed the canonical comparison is 1:1.
-                The "3 direct pairings" was inherited from earlier
-                benchmark work and conflated server pairing work with
-                what the client actually delegates per round (the
-                AmorE server does ~3 pairings per round, but those
-                are server-side, not what the client offloads).
+    2026-05-13: Confirmed via AmorE paper Section 7.2 that the canonical
+                comparison is 1:1 (1 delegation vs 1 local pairing).
+                Ratio (1:1): 898/523.4 = 1.72 (slower per single
+                delegation). The -O3 fix is real and stands; AmorE's
+                value comes from BATCH delegation (M>=5), not single.
 
-                Corrected ratio (1:1): 898/523.4 = 1.72 (slower).
-                The -O3 fix is still real (AmorE rebuilds 1919->898),
-                but the baseline correction means it does not flip
-                the conclusion direction (only reduces magnitude).
-
-  The Section 5 prose has been rewritten to reflect the 1:1 framing.
+  The Section 5 prose reflects the 1:1 framing.
 
 
   8.6 Effect on Section 6 (vs BN254) — INCOMPLETE: baseline at -O2

@@ -5,6 +5,84 @@
 ║         Date     : 2026-04-01                                            ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  TIMING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  T.1  Batch delegation (M=50) — headline
+  ───────────────────────────────────────
+  Client compute time per pairing, AmorE delegation vs one local pairing
+  (positive = AmorE saves time; negative = AmorE costs more time):
+
+      single (M=1):  -27%   AmorE costs 27% MORE compute time per pairing
+      batch  M=5:    +25%   AmorE saves 25% compute time per pairing
+      batch  M=10:   +32%   AmorE saves 32% compute time per pairing
+      batch  M=50:   +37%   AmorE saves 37% compute time per pairing
+
+  At M=50, AmorE saves 37% of client compute time per pairing.
+
+  Source: AmorE paper's cost formula applied to measured RELIC-grade
+  primitives (microbench, validated vs the pairing baseline to 0.008%:
+  36,775,493 vs 36,778,389 cyc). Primitive cycles MEASURED; batch client
+  cost from the paper formula; compute-only (no comm, no server-wait).
+  See Section 12.
+
+  T.2  Per-round amortized timing (measured, N=50)
+  ────────────────────────────────────────────────
+      OneTimeSetup            84,660,025 cyc      503.9 ms
+      Blind  (per round)      33,502,690 cyc      199.4 ms   52.2%
+      Verify (per round)      30,644,363 cyc      182.4 ms   47.8%
+      Amort/round (N=50)      64,147,052 cyc      381.8 ms    100%
+
+  Amortization is flat across batch size:
+      N= 1  ->  372.5 ms   baseline
+      N=10  ->  378.8 ms   +1.7%
+      N=50  ->  381.8 ms   +2.5%
+
+  T.3  Single delegation vs one local pairing (RELIC, measured)
+  ─────────────────────────────────────────────────────────────
+      RELIC pp_map_oatep_k12 (easy-C, -O2):  218.2 ms  (36,658,970 cyc)
+      RELIC pp_map_oatep_k12 (easy-C, -O3):  218.9 ms  (36,778,389 cyc)
+      AmorE per-round amortized (N=50):      381.8 ms
+      Ratio: 381.8 / 218.2 = 1.75x  (AmorE slower; single delegation,
+             home Fp12)
+
+  ~1.51x of the 1.75x is implementation debt (home Fp12 vs RELIC Fp12,
+  closable). Single-pairing delegation does not win on M4; AmorE wins
+  via BATCH (M>=5) — see T.1.
+
+  ──────────────────────────────────────────────────────────────────────
+  >>> NOT A CONTRADICTION with T.1 above <<<
+  T.1 says AmorE SAVES time; T.3 says AmorE is SLOWER. Two different cases:
+      T.1 = BATCH of 50, RELIC-grade arithmetic   ->  saves
+      T.3 = ONE delegation, our hand-written Fp12  ->  slower
+  AmorE is built to delegate MANY pairings; the batch case (T.1) is the
+  intended use, the single case (T.3) is the worst case. Both are correct.
+  ──────────────────────────────────────────────────────────────────────
+
+  Full timing detail: Section 4.  RELIC comparison: Section 11.
+  Fair protocol comparison: Section 12.
+
+  ══════════════════════════════════════════════════════════════════════
+  SUMMARY — why these numbers look opposite but aren't
+  ══════════════════════════════════════════════════════════════════════
+  Three separate results, each a DIFFERENT question; none compares the
+  same thing in the same setting:
+
+    1) vs the PYTHON server (Raspberry Pi)
+         AmorE is 192.4x FASTER             (Section 7)
+    2) vs OPTIMIZED LOCAL C, ONE pairing, our hand-written Fp12
+         AmorE is 1.75x SLOWER              (Section 11)
+    3) vs LOCAL C, a BATCH of 50, RELIC-grade arithmetic
+         AmorE SAVES 37% of compute time    (Section 12 / T.1)
+
+  AmorE beats a slow (Python) server easily; loses to fast local C for a
+  SINGLE pairing with today's code; wins again once you delegate MANY
+  pairings at once (batch). All three are true.
+  ══════════════════════════════════════════════════════════════════════
+
+
   ─────────────────────────────────────────────────────────────────────────
   Note revised 2026-05-31:
 
@@ -224,11 +302,13 @@
   Systemic speedup vs Python server        :     192.4x
   Client cost vs Python server             :       0.52%
 
-  Caveat:
-    The 192.4x figure measures AmorE's value AGAINST THE SPECIFIC
-    SERVER USED IN THIS DEPLOYMENT (Python). It is NOT a comparison
-    against an optimized local pairing implementation. For that
-    apples-to-apples comparison, see Section 11.
+  ──────────────────────────────────────────────────────────────────────
+  >>> NOT A CONTRADICTION WITH SECTION 11 ("AmorE 1.75x SLOWER") <<<
+  This 192.4x is AmorE vs the SLOW PYTHON server actually deployed here.
+  Section 11 compares AmorE vs FAST optimized local C (RELIC) and gets
+  1.75x SLOWER. Different baseline (Python vs C) -> different answer.
+  Both are correct; they are simply not the same comparison.
+  ──────────────────────────────────────────────────────────────────────
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   8. THROUGHPUT
@@ -292,7 +372,8 @@
   measured by the same DWT cycle counter at the same 168 MHz clock.
 
   Native implementation
-    Library      : RELIC v0.6.0  (10.23 MiB, 36k objects)
+    Library      : RELIC v0.7.0  (revised 2026-06-01: was mislabeled
+                   v0.6.0; relic_conf.h confirms RLC_VERSION 0.7.0)
     Curve        : BN_P254  (same curve as alt_bn128 / BN128)
     Pairing      : pp_map_oatep_k12  (Optimal Ate, embedding degree 12)
     ARITH        : easy  (pure C, gcc -O2 -mthumb -mfpu=fpv4-sp-d16)
@@ -328,10 +409,14 @@
       AmorE costs ~1.75x MORE per round than computing a single BN254
       pairing directly with optimized C on the same STM32F4.
 
-  This reverses the systemic 192.4x speedup figure of Section 7 when
-  the comparison baseline is changed from "Python on RPi" to
-  "optimized C on the same MCU". The two figures are not in conflict:
-  they answer different questions.
+  ──────────────────────────────────────────────────────────────────────
+  >>> NOT A CONTRADICTION WITH THE 192.4x OF SECTION 7 <<<
+  Section 7:  AmorE vs the deployed PYTHON server  ->  192.4x FASTER.
+  Section 11: AmorE vs optimized LOCAL C (RELIC)   ->  1.75x SLOWER.
+  Same client, two different things compared against. Seeing "192x faster"
+  and "1.75x slower" might look like an error -- it is not. Faster than
+  slow Python, slower than fast C. Both are measured on real hardware.
+  ──────────────────────────────────────────────────────────────────────
 
   11.2  Why AmorE still has value
 
@@ -389,6 +474,31 @@
   vs Optimized C on same STM32  (Section 11)
     Speedup            :  0.57x    (i.e. AmorE is 1.75x SLOWER)
     Memory ratio       :  AmorE uses 21x less working RAM and 4.2x less Flash
+
+    Fair protocol comparison (added 2026-06-01):
+    The 1.75x SLOWER figure above compares the AmorE client (hand-written,
+    unoptimized Fp12 arithmetic) against RELIC's optimized pairing, so it
+    mixes an implementation gap into the protocol result. We measured the
+    client's primitives using RELIC's OWN routines on this same STM32
+    (microbench validated vs the pairing baseline to 0.008%: 36,775,493 vs
+    36,778,389 cyc) and applied the paper's cost formula:
+       single (M=1):  -27%   (single-pairing delegation does NOT win on M4)
+       batch  M=5:    +25%
+       batch  M=10:   +32%
+       batch  M=50:   +37%
+    Conclusions: ~1.51x of the 1.75x is implementation debt (home Fp12 vs
+    RELIC Fp12, closable with RELIC-grade arithmetic); even with RELIC-grade
+    arithmetic SINGLE delegation does not win on M4; AmorE wins via BATCH
+    delegation (M>=5), +25% to +37% per pairing.
+
+  ──────────────────────────────────────────────────────────────────────
+  >>> WHY "-27%" AND "+37%" ARE BOTH CORRECT (not a contradiction) <<<
+  -27% (single, M=1): delegating ONE pairing costs 27% MORE -> AmorE loses.
+  +37% (batch, M=50): delegating 50 at once SAVES 37%        -> AmorE wins.
+  The sign flips because the one-time setup cost is shared across the
+  whole batch. One pairing is the worst case; many pairings (batch) is
+  the case AmorE is designed for.
+  ──────────────────────────────────────────────────────────────────────
 
   The contribution of AmorE is therefore best characterized as
   ENABLING pairing-based cryptography on memory-constrained MCUs

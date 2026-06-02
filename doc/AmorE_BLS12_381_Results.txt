@@ -12,44 +12,10 @@
   TIMING
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  ══════════════════════════════════════════════════════════════════════
-  HOW TO READ THIS REPORT  —  results that look opposite but aren't
-  ══════════════════════════════════════════════════════════════════════
-  At a glance some numbers here can look contradictory. They are NOT.
-  Each measures a DIFFERENT thing:
-
-    A) "AmorE SAVES 57%"  vs  "AmorE is 1.72x SLOWER"
-         saves 57%    = a BATCH of 50, RELIC-grade arithmetic   (T.1)
-         1.72x slower = ONE delegation, our hand-written Fp12   (T.3)
-         Different workload AND different code. Both correct.
-
-    B) "5.03x slowdown vs BN254"  vs  "2.35x slowdown vs BN254"
-         5.03x = like-for-like, BOTH built at -O2 (valid)       (Section 6)
-         2.35x = -O3 AmorE vs -O2 BN254, NOT comparable         (Section 8.6)
-         Use 5.03x. 2.35x is kept only as a flagged reference.
-
-    C) "2.14x speedup"
-         = AmorE getting faster ON ITSELF when compiled -O3 instead of
-           -O2 (1,919 ms -> 898 ms). NOT a comparison vs RELIC or vs a
-           local pairing.                                        (Section 8)
-
-  Nowhere does this report say AmorE is both faster and slower than the
-  SAME thing in the SAME setting.
-  ══════════════════════════════════════════════════════════════════════
-
-
   T.1  Batch delegation (M=50) — headline
   ───────────────────────────────────────
-  AmorE exists to delegate MANY pairings. The figures below are the
-  CLIENT COMPUTE TIME PER PAIRING, AmorE delegation vs computing one
-  pairing locally, from the AmorE paper's cost formula applied to the
-  measured RELIC-grade primitives (microbench: RELIC's own
-  gt_exp/ep_mul/ep2_mul on this STM32, validated vs the pairing baseline
-  to 0.18%).
-
-  Sign convention:
-      POSITIVE = AmorE SAVES that share of compute time per pairing (faster)
-      NEGATIVE = AmorE COSTS that much more compute time per pairing (slower)
+  Client compute time per pairing, AmorE delegation vs one local pairing
+  (positive = AmorE saves time; negative = AmorE costs more time):
 
       single (M=1):  -0.8%  AmorE costs 0.8% more compute time (near tie)
       batch  M=5:    +46%   AmorE saves 46% compute time per pairing
@@ -57,9 +23,12 @@
       batch  M=50:   +57%   AmorE saves 57% compute time per pairing
 
   At M=50, AmorE saves 57% of client compute time per pairing.
-  Provenance: primitive cycles MEASURED (microbench); batch client cost
-  from the paper formula; compute-only (no comm, no server-wait).
-  See Section 5.
+
+  Source: AmorE paper's cost formula applied to measured RELIC-grade
+  primitives (microbench: RELIC's own gt_exp/ep_mul/ep2_mul on this STM32,
+  validated vs the pairing baseline to 0.18%). Primitive cycles MEASURED;
+  batch client cost from the paper formula; compute-only (no comm, no
+  server-wait). See Section 5.
 
   T.2  Per-round amortized timing (measured, N=50)
   ────────────────────────────────────────────────
@@ -111,6 +80,30 @@
 
   Full timing detail: Section 4.  RELIC comparison: Section 5.
   -O2/-O3: Section 8.  vs BN254: Section 6.
+
+  ══════════════════════════════════════════════════════════════════════
+  SUMMARY — why these numbers look opposite but aren't
+  ══════════════════════════════════════════════════════════════════════
+  Each measures a DIFFERENT thing:
+
+    A) "AmorE SAVES 57%"  vs  "AmorE is 1.72x SLOWER"
+         saves 57%    = a BATCH of 50, RELIC-grade arithmetic   (T.1)
+         1.72x slower = ONE delegation, our hand-written Fp12   (T.3)
+         Different workload AND different code. Both correct.
+
+    B) "5.03x slowdown vs BN254"  vs  "2.35x slowdown vs BN254"
+         5.03x = like-for-like, BOTH built at -O2 (valid)       (Section 6)
+         2.35x = -O3 AmorE vs -O2 BN254, NOT comparable         (Section 8.6)
+         Use 5.03x. 2.35x is kept only as a flagged reference.
+
+    C) "2.14x speedup"
+         = AmorE getting faster ON ITSELF when compiled -O3 instead of
+           -O2 (1,919 ms -> 898 ms). NOT a comparison vs RELIC or vs a
+           local pairing.                                        (Section 8)
+
+  Nowhere does this report say AmorE is both faster and slower than the
+  SAME thing in the SAME setting.
+  ══════════════════════════════════════════════════════════════════════
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

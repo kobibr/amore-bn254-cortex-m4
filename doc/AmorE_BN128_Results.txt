@@ -108,6 +108,50 @@
   C at -O2 vs RELIC pure C (easy) — not C-vs-ASM.
   ─────────────────────────────────────────────────────────────────────────
 
+  ──────────────────────────────────────────────────────────────────────────
+  Note added 2026-06-05 — cross-reference to the -O3 Energy Study
+  ──────────────────────────────────────────────────────────────────────────
+
+  IMPORTANT: every AmorE timing in this report (Sections T.2, T.3, 4, 11)
+  is from the GCC -O2 AmorE build (see Section 1, line "Flags: -O2 ...").
+  The 2026-06-04 Energy Study measured AmorE at -O3 on the same STM32F4.
+  Those -O3 numbers are reported separately in docs/FINAL_RESULTS and the
+  repo README; they are NOT interchangeable with the -O2 figures below.
+
+  Side-by-side (BN254, both measured by the same DWT counter @ 168 MHz):
+
+    Quantity                       -O2 (this report)   -O3 (Energy Study)
+    ----------------------------   -----------------   ------------------
+    RELIC pp_map_oatep_k12 (1×)    218.2 ms            218.92 ms
+                                   (36,658,970 cyc)    (36,778,389 cyc)
+    AmorE amort/round (N=50)       381.8 ms            422.11 ms
+                                   (64,147,052 cyc)    (70,915,190 cyc)
+    AmorE / RELIC ratio            1.75×               1.93×
+
+  The RELIC pairing matches across builds (easy-C is O-level insensitive,
+  within 0.3%). The AmorE per-round figure does NOT: at -O3 it is ~10.6%
+  SLOWER than at -O2 (422.11 vs 381.8 ms).
+
+  >>> Flagged anomaly (not yet root-caused) <<<
+  This is the OPPOSITE of BLS12-381, where -O3 was ~2.14× FASTER than -O2
+  (1,919 → 898 ms, via fp_mul inner-loop unrolling). For BN254 (8 limbs),
+  -O3 appears to regress the per-round compute. A plausible cause is that
+  the unrolling/inlining that helps BLS's 12-limb fp_mul does not help —
+  or hurts — the 8-limb case (e.g. I-cache pressure or register spilling),
+  but this has NOT been confirmed by disassembly here. Until a fp_mul
+  -O2-vs-O3 disassembly comparison on BN254 is done, treat the -O3 BN254
+  regression as an observed-but-unexplained measurement, not a settled
+  result. The 1.75× figure in this report (T.3 / Section 11) remains the
+  valid -O2-vs-O2 comparison; the 1.93× is the valid -O3-vs-O3 comparison.
+
+  Energy (added by the -O3 study; this -O2 report did not measure energy):
+    AmorE/round 160.17 mJ vs 1× RELIC 85.21 mJ → 1.88× (n=10 replicas).
+    PPK2 uncalibrated (no reference resistor); absolute mJ indicative,
+    ratio calibration-independent. Source: analysis/results/
+    energy_real_20260605.json.
+  ──────────────────────────────────────────────────────────────────────────
+
+
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   1. SYSTEM CONFIGURATION

@@ -64,6 +64,37 @@
   AmorE exists to delegate MANY pairings (the batch case). Both correct.
   ──────────────────────────────────────────────────────────────────────
 
+  ──────────────────────────────────────────────────────────────────────────
+  T.5  Energy (added 2026-06-05 from the -O3 Energy Study)
+  ──────────────────────────────────────────────────────────────────────────
+  This report (2026-05-07/12) measured TIME and MEMORY only; energy was
+  listed as future work (Section 8.8, item 3). The 2026-06-04 40-cell
+  regression measured energy with a Nordic PPK2 at 3.300 V on the same
+  STM32F4, at -O3 — the same build as this report's Section 8.5 timing.
+
+  Single delegation (M=1), -O3, compute-only, phase-aware (GPIO bit0):
+
+    Quantity                  AmorE/round     1× RELIC      Ratio
+    -----------------------   -------------   -----------   ------
+    Energy                    353.49 mJ       180.68 mJ     1.96×
+    (current, mA)             118.88 ± 0.33   104.60 ± 0.17
+    (cycles)                  151,378,878     87,932,879
+
+  The -O3 timing here matches this report's Section 8.5 exactly: RELIC
+  523.41 ms (87,932,879 cyc) and AmorE amort/round 901.06 ms ≈ 898.0 ms
+  (within 0.3%), ratio 1.72×. The energy ratio (1.96×) exceeds the time
+  ratio (1.72×) because AmorE's CIOS compute draws ~14% more current than
+  RELIC's COMBA pairing (118.88 vs 104.60 mA).
+
+  Replicas: n=9 (one of 10 had a truncated telemetry dump; its energy
+  trace is valid but its amortized cycle count is excluded). The PPK2 is
+  uncalibrated (no reference resistor): absolute mA/mJ are indicative
+  only, while ratios and cycle/time figures are calibration-independent.
+  Source: analysis/results/energy_real_20260605.json; full study in
+  docs/FINAL_RESULTS.
+  ──────────────────────────────────────────────────────────────────────────
+
+
   T.4  Slowdown vs BN254 (same protocol/hardware, both -O2)
   ──────────────────────────────────────────────────────────
       OneTimeSetup        503.9 ms  -> 2,565.2 ms   5.09x

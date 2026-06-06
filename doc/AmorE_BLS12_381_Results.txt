@@ -92,6 +92,13 @@
   only, while ratios and cycle/time figures are calibration-independent.
   Source: analysis/results/energy_real_20260605.json; full study in
   docs/FINAL_RESULTS.
+
+  Reproducibility notes (cross-run consistency, not discrepancies):
+  - Cycles are reported as pair_min_cycles (min of replicas). The earlier
+    2026-05-13 figure of 87,933,033 cyc was the AVERAGE of 10; the 154-cycle
+    difference vs the 87,932,879 min is 1.8 ppm — within measurement noise.
+  - The Energy Study (2026-06-04) re-measured Mode A amort at 901.06 ms; the
+    original 898.0 ms (2026-05-12, Section 8.5) reproduces to within 0.34%.
   ──────────────────────────────────────────────────────────────────────────
 
 

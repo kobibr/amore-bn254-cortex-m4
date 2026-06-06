@@ -396,8 +396,8 @@
   [OK]  All 61 honest rounds verified correctly  (0 failures)
   [OK]  Malicious server correctly detected and rejected
   [OK]  Zero protocol errors (UART / CRC / CMD / length)
-  [OK]  Flash usage        :  18,552 B      (1.77% of 1 MB)
-  [OK]  SRAM usage         :   3,176 B      (1.62% of 192 KB)
+  [OK]  Flash usage        :  20,516 B      (20.0 KiB, 1.96% of 1 MB)
+  [OK]  SRAM usage         :   3,228 B      (3.2 KiB working, 1.64% of 192 KB)
   [OK]  Amortized cost     :  381.8 ms/round @ 168 MHz  (N=50)
   [OK]  Cost vs Py server  :    0.52% of py_ecc pairing time on RPi
   [OK]  Systemic speedup   :  192.4x vs Python server (NOT vs local C)

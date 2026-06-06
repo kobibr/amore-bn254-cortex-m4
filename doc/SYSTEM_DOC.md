@@ -60,6 +60,8 @@
 
 ## 3. End-to-end flow — `./run_benchmark.sh`
 
+> **Note (2026-06):** `run_benchmark.sh` is the single-shot driver described below. Energy measurement uses a separate, per-cell architecture in the companion repo (`amore-energy-study`): `scripts/full_regression.sh` orchestrates the cells, and `scripts/measure_one_cell.py` is the sole owner of the Nordic PPK2 for each cell (PPK2 powers the DUT, flashes, runs the server, samples current to CSV, then reads telemetry over GDB). The protocol and firmware described here are identical; only the measurement harness differs.
+
 ### Step 1 — Build (on the laptop)
 - Cleans the `build/` directory.
 - Runs `cmake` and `make`.
@@ -182,6 +184,29 @@ ${PROJECT_DIR}/
 | server status      | 60s    | server.py          | wait for CMD_STATUS from STM32        |
 | server ready       | 30s    | amore.c            | wait for CMD_READY at startup         |
 | server idle        | 120s   | server.py          | auto-exit if no packets are received  |
+
+### Hardware gotcha — NRST must be actively driven, never left floating
+
+During Day-4/5 bring-up, all Mode B measurements appeared to hang in `ep_param_set_any_pairf()` (current_phase stuck at 0x04 CURVE_INIT, status never leaving 0xBAD00000, PC inside RELIC). After ~12 hours and ruling out FP_SMB looping, the curve search, heap/stack size, RELIC speed, and build drift, the root cause was found: the STM32 was **reset-looping every ~2.7 ms** because the NRST line was left floating after flashing. Evidence: `CYCCNT` always read ~430,000 (≈2.6 ms @ 168 MHz, i.e. the counter kept restarting) and `uwTick` stayed at 2 (SysTick never accumulated). The CPU never had the ~3 s it legitimately needs to finish `ep_param_set`. **Fix:** drive NRST HIGH with a held `gpioset` that survives the SSH session (not a `timeout` pulse that lets it float), and release that hold before any openocd/GDB that needs GPIO18 as SRST. This is implemented in `measure_one_cell.py` (`nrst_pulse_hold` / `nrst_release`).
+
+Additional evidence: `RCC_CSR` showed `PINRSTF` (NRST-pin reset flag) set
+repeatedly. Physical cause: when a `timeout` gpioset exits, libgpiod releases
+GPIO18 to high-Z; the STM32's internal NRST pull-up (~40k) is weak, so the
+floating RPi pin picked up noise that re-triggered reset every few ms. With
+NRST held high, BLS12-381 Mode B completed (status 0x600D0000,
+pair_min 87,933,198 cyc = 523.4 ms), matching the independent 2026-05-07 /
+2026-05-13 measurements. The firmware was never broken.
+
+Why specifically a held gpioset (the three-way constraint):
+
+| Reset method            | NRST stable?     | PPK2 D-channels survive? |
+|-------------------------|------------------|--------------------------|
+| openocd `reset run`     | yes (push-pull)  | no (SWD activity breaks) |
+| gpioset `timeout` pulse | no (floats)      | yes (no SWD)             |
+| gpioset hold-high       | yes              | yes (no SWD)             |
+
+Only hold-high satisfies both. The hold process must be killed before the
+next NRST pulse and before any openocd that needs SWD/SRST, then re-established.
 
 ---
 
